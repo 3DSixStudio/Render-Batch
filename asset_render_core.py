@@ -132,14 +132,23 @@ def setup_scene(args):
     r.image_settings.color_depth = '8'
     r.image_settings.compression = 15
 
-    # Bright, saturated colours like the reference icons
+    # Colour management: Standard, same as the Icon / SCS renders
+    try:
+        scene.display_settings.display_device = 'sRGB'
+    except Exception:
+        pass
     try:
         scene.view_settings.view_transform = 'Standard'
+    except Exception as e:
+        print(f"!!! Could not set view transform to Standard: {e}")
+    try:
         scene.view_settings.look = 'None'
     except Exception:
         pass
     scene.view_settings.exposure = 0.0
     scene.view_settings.gamma = 1.0
+    print(f"=== Color management: view {scene.view_settings.view_transform} | look {scene.view_settings.look} | "
+          f"display {scene.display_settings.display_device} ===")
 
     if r.engine == 'CYCLES':
         c = scene.cycles
