@@ -1,10 +1,10 @@
-**SCS Batch Render v1.1.0** — new dashboard UI
+**SCS Batch Render v1.1.1** — cleaner layout, no duplicate buttons
 
-- Brand-new light **dashboard** design: sidebar navigation, search & filter bar, stat cards (images in scene, selected, rendered, elapsed / ETA), live progress ring, Scs / Icon / Custom counters, recent renders list.
-- The whole app is now in **English**.
-- New **app icon** (window, taskbar and Desktop shortcut).
-- **Settings** popup now holds: Blender executable, Force GPU, Start frame, image size (Scs / Icon) and resolution scale.
-- **Info** popup: created by Hari, GitHub link and **Update**. The bell shows a red dot when a new version is available.
-- Search box and filter (Scs / Icon / Custom / Maps / Objects) for scene items.
+Every feature now lives in exactly one place:
 
-**Already installed?** Open the app → Info → *Check for updates*.
+- **Start Render / Stop Now** moved to the top right of the dashboard.
+- **Sidebar** is navigation only: Dashboard, Settings, Info & Update (shows a red ● when an update is available). Removed the duplicate Scan / Output Folder / Save Log entries, the bell, the avatar and the Recent Renders list.
+- **Stat cards** are the only place for counts, overall progress and time.
+- **Now Rendering** ring shows the progress of the *current* image (samples); the overall progress stays in the Rendered card.
+- **Scene Items**: search and filter moved into the card; tick buttons grouped as *Tick: All / None / Scs / Icon* (no longer confused with the filter).
+- Project card shows the render settings as read-only info (edit them in Settings).

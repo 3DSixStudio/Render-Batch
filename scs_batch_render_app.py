@@ -530,12 +530,12 @@ class MainWindow(QMainWindow):
 
         content = QWidget()
         cv = QVBoxLayout(content)
-        cv.setContentsMargins(24, 16, 24, 18)
-        cv.setSpacing(14)
-        cv.addLayout(self._build_topbar())
+        cv.setContentsMargins(26, 20, 26, 20)
+        cv.setSpacing(16)
 
-        # heading
+        # heading + main actions (the only Start / Stop buttons)
         hrow = QHBoxLayout()
+        hrow.setSpacing(10)
         col = QVBoxLayout()
         col.setSpacing(0)
         h = QLabel("Render Overview")
@@ -546,16 +546,19 @@ class MainWindow(QMainWindow):
         col.addWidget(self.lbl_status)
         hrow.addLayout(col)
         hrow.addStretch(1)
-        self.lbl_file_chip = QLabel("No .blend loaded")
-        self.lbl_file_chip.setObjectName("chip")
-        hrow.addWidget(self.lbl_file_chip)
+        self.btn_stop = self._btn("  Stop Now", self.stop_now, "danger", icon="stop", icon_color=RED)
+        self.btn_stop.setEnabled(False)
+        self.btn_render = self._btn("  Start Render", self.start_render, "primary", icon="play", icon_color="#ffffff")
+        self.btn_render.setMinimumWidth(170)
+        hrow.addWidget(self.btn_stop)
+        hrow.addWidget(self.btn_render)
         cv.addLayout(hrow)
 
-        # stat cards
+        # stat cards (the only place for counts / overall progress / time)
         stats = QHBoxLayout()
         stats.setSpacing(14)
         self.st_total = StatCard("Images In Scene", "#eaf3ff", BLUE)
-        self.st_selected = StatCard("Selected To Render", "#fff3e6", ORANGE)
+        self.st_selected = StatCard("Will Render", "#fff3e6", ORANGE)
         self.st_done = StatCard("Rendered", "#f1edff", PURPLE)
         self.st_time = StatCard("Elapsed Time", "#ffeef2", PINK)
         for c in (self.st_total, self.st_selected, self.st_done, self.st_time):
@@ -566,14 +569,12 @@ class MainWindow(QMainWindow):
         self.st_time.set("00:00", "ETA --:--")
         cv.addLayout(stats)
 
-        # middle row: project | now rendering
         mid = QHBoxLayout()
         mid.setSpacing(14)
         mid.addWidget(self._build_project_card(), 5)
         mid.addWidget(self._build_now_card(), 6)
         cv.addLayout(mid)
 
-        # bottom row: scene items | log
         bot = QHBoxLayout()
         bot.setSpacing(14)
         bot.addWidget(self._build_items_card(), 11)
@@ -585,13 +586,13 @@ class MainWindow(QMainWindow):
         self._build_settings_dialog()
         self._build_info_dialog()
 
-    # ------------------------------------------------------------------ sidebar
+    # ------------------------------------------------------------------ sidebar (navigation only)
     def _build_sidebar(self):
         sb = QFrame()
         sb.setObjectName("sidebar")
-        sb.setFixedWidth(236)
+        sb.setFixedWidth(220)
         v = QVBoxLayout(sb)
-        v.setContentsMargins(16, 18, 16, 16)
+        v.setContentsMargins(16, 20, 16, 16)
         v.setSpacing(4)
 
         brand = QHBoxLayout()
@@ -605,51 +606,38 @@ class MainWindow(QMainWindow):
         b1 = QLabel("SCS RENDER")
         b1.setObjectName("brand")
         bc.addWidget(b1)
-        b2 = QLabel(f"Batch tool  ·  v{APP_VERSION}")
+        b2 = QLabel("Batch render tool")
         b2.setObjectName("brandSub")
         bc.addWidget(b2)
         brand.addLayout(bc)
         brand.addStretch(1)
         v.addLayout(brand)
-        v.addSpacing(18)
+        v.addSpacing(22)
+
+        sec = QLabel("MENU")
+        sec.setObjectName("section")
+        v.addWidget(sec)
+        v.addSpacing(4)
 
         self.nav_buttons = {}
 
-        def nav(key, text, icon, slot, checkable=False):
+        def nav(key, text, icon, slot):
             b = self._btn("  " + text, slot, "nav", icon=icon)
             b.setIconSize(QSize(18, 18))
-            b.setCheckable(checkable)
-            b.setProperty("icon_name", icon)
             self.nav_buttons[key] = b
             v.addWidget(b)
             return b
 
-        nav("dash", "Dashboard", "dashboard", lambda: None, checkable=True).setChecked(True)
-        nav("scan", "Scan Scene", "scan", lambda: self.start_scan())
-        nav("out", "Output Folder", "folder", lambda: self.open_out())
-        nav("log", "Save Render Log", "log", lambda: self.save_log())
+        d = nav("dash", "Dashboard", "dashboard", lambda: None)
+        d.setCheckable(True)
+        d.setChecked(True)
+        d.setIcon(make_icon("dashboard", PURPLE))
         nav("settings", "Settings", "settings", lambda: self.open_settings())
-        nav("info", "Info", "info", lambda: self.open_info())
-        self.nav_buttons["dash"].setIcon(make_icon("dashboard", PURPLE))
-
-        v.addSpacing(16)
-        rh = QHBoxLayout()
-        sec = QLabel("RECENT RENDERS")
-        sec.setObjectName("section")
-        rh.addWidget(sec)
-        rh.addStretch(1)
-        v.addLayout(rh)
-        self.recent_box = QVBoxLayout()
-        self.recent_box.setSpacing(2)
-        self.lbl_recent_empty = QLabel("Nothing rendered yet.")
-        self.lbl_recent_empty.setObjectName("recentSub")
-        self.recent_box.addWidget(self.lbl_recent_empty)
-        v.addLayout(self.recent_box)
+        self.nav_info = nav("info", "Info && Update", "info", lambda: self.open_info())
         v.addStretch(1)
 
         prof = QFrame()
         prof.setObjectName("profile")
-        prof.setCursor(Qt.PointingHandCursor)
         ph = QHBoxLayout(prof)
         ph.setContentsMargins(10, 10, 10, 10)
         av = QLabel(APP_AUTHOR[:1].upper())
@@ -667,96 +655,19 @@ class MainWindow(QMainWindow):
         pc.addWidget(r)
         ph.addLayout(pc)
         ph.addStretch(1)
-        prof.mousePressEvent = lambda e: self.open_info()
         v.addWidget(prof)
         return sb
-
-    def _add_recent(self, path, sec):
-        if not path or not os.path.isfile(path):
-            return
-        self.recent.insert(0, (path, sec))
-        self.recent = self.recent[:4]
-        self.lbl_recent_empty.hide()
-        while self.recent_box.count() > 1:
-            it = self.recent_box.takeAt(1)
-            if it.widget():
-                it.widget().deleteLater()
-        for p, s in self.recent:
-            row = QFrame()
-            row.setObjectName("recentRow")
-            row.setCursor(Qt.PointingHandCursor)
-            h = QHBoxLayout(row)
-            h.setContentsMargins(6, 5, 6, 5)
-            h.setSpacing(8)
-            th = QLabel()
-            th.setFixedSize(34, 34)
-            th.setStyleSheet("background:#f4f5fa; border-radius:8px;")
-            pm = QPixmap(p)
-            if not pm.isNull():
-                th.setPixmap(pm.scaled(34, 34, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-                th.setAlignment(Qt.AlignCenter)
-            h.addWidget(th)
-            c = QVBoxLayout()
-            c.setSpacing(0)
-            nm = QLabel(self._elide(os.path.splitext(os.path.basename(p))[0], 22))
-            nm.setObjectName("recentName")
-            nm.setToolTip(p)
-            c.addWidget(nm)
-            sb = QLabel(f"{s}s  ·  {time.strftime('%H:%M')}")
-            sb.setObjectName("recentSub")
-            c.addWidget(sb)
-            h.addLayout(c, 1)
-            row.mousePressEvent = lambda e, p=p: QDesktopServices.openUrl(QUrl.fromLocalFile(p))
-            self.recent_box.addWidget(row)
 
     @staticmethod
     def _elide(text, n):
         return text if len(text) <= n else text[: n - 1] + "…"
 
-    # ------------------------------------------------------------------ topbar
-    def _build_topbar(self):
-        bar = QHBoxLayout()
-        bar.setSpacing(10)
-        self.ed_search = QLineEdit()
-        self.ed_search.setObjectName("search")
-        self.ed_search.setPlaceholderText("Search scene items...")
-        self.ed_search.addAction(make_icon("search", SUB), QLineEdit.LeadingPosition)
-        self.ed_search.setClearButtonEnabled(True)
-        self.ed_search.setMaximumWidth(420)
-        self.ed_search.textChanged.connect(self.apply_filter)
-        bar.addWidget(self.ed_search, 1)
-        bar.addStretch(1)
-
-        self.cmb_filter = QComboBox()
-        self.cmb_filter.addItems(["Filter: All items", "Scs only", "Icon only", "Custom only",
-                                  "Maps only", "Objects only"])
-        self.cmb_filter.setMinimumWidth(170)
-        self.cmb_filter.currentIndexChanged.connect(self.apply_filter)
-        bar.addWidget(self.cmb_filter)
-
-        bell_wrap = QWidget()
-        bell_wrap.setFixedSize(40, 38)
-        self.btn_bell = self._btn("", self.open_info, "iconBtn", "Updates", icon="bell")
-        self.btn_bell.setParent(bell_wrap)
-        self.btn_bell.setGeometry(0, 2, 36, 36)
-        self.btn_bell.setIconSize(QSize(18, 18))
-        self.dot = QLabel(bell_wrap)
-        self.dot.setObjectName("dot")
-        self.dot.setGeometry(27, 2, 9, 9)
-        self.dot.hide()
-        bar.addWidget(bell_wrap)
-
-        self.btn_avatar = self._btn(APP_AUTHOR[:1].upper(), self.open_info, "avatar", f"Created by {APP_AUTHOR}")
-        self.btn_avatar.setFixedSize(34, 34)
-        bar.addWidget(self.btn_avatar)
-        return bar
-
     # ------------------------------------------------------------------ project card
     def _build_project_card(self):
-        card = Card("Project", "Blender file, output and render options")
+        card = Card("Project", "What to render and where to save it")
         g = QGridLayout()
         g.setHorizontalSpacing(8)
-        g.setVerticalSpacing(8)
+        g.setVerticalSpacing(10)
         g.setColumnStretch(1, 1)
 
         lb = QLabel("Blend file")
@@ -780,36 +691,25 @@ class MainWindow(QMainWindow):
         g.addWidget(self._btn("Open", self.open_out, icon="folder"), 1, 3)
         card.lay.addLayout(g)
 
-        cl = QLabel("Render settings")
+        card.lay.addSpacing(4)
+        cl = QLabel("Render settings  (change them in Settings)")
         cl.setObjectName("fieldLabel")
         card.lay.addWidget(cl)
         self.btn_cfg = QLabel("")
         self.btn_cfg.setObjectName("cfg")
         self.btn_cfg.setWordWrap(True)
-        self.btn_cfg.setCursor(Qt.PointingHandCursor)
-        self.btn_cfg.setToolTip("Click to change in Settings")
-        self.btn_cfg.mousePressEvent = lambda e: self.open_settings()
         card.lay.addWidget(self.btn_cfg)
         card.lay.addStretch(1)
-
-        btns = QHBoxLayout()
-        btns.setSpacing(10)
-        self.btn_render = self._btn("  Start Render", self.start_render, "primary", icon="play", icon_color="#ffffff")
-        self.btn_stop = self._btn("  Stop Now", self.stop_now, "danger", icon="stop", icon_color=RED)
-        self.btn_stop.setEnabled(False)
-        btns.addWidget(self.btn_render, 3)
-        btns.addWidget(self.btn_stop, 2)
-        card.lay.addLayout(btns)
         return card
 
     # ------------------------------------------------------------------ now rendering card
     def _build_now_card(self):
-        card = Card("Now Rendering", "Live progress of the current batch")
+        card = Card("Now Rendering", "Current image and last finished image")
         h = QHBoxLayout()
         h.setSpacing(18)
 
-        self.ring = Ring(140, 13)
-        self.ring.set_value(0, "0/0", "images")
+        self.ring = Ring(132, 12)
+        self.ring.set_value(0, "0%", "this image")
         h.addWidget(self.ring, 0, Qt.AlignVCenter)
 
         info = QVBoxLayout()
@@ -822,21 +722,6 @@ class MainWindow(QMainWindow):
         self.lbl_now_info.setObjectName("sub")
         self.lbl_now_info.setWordWrap(True)
         info.addWidget(self.lbl_now_info)
-        info.addSpacing(4)
-        sl = QHBoxLayout()
-        a = QLabel("Current image")
-        a.setObjectName("fieldLabel")
-        sl.addWidget(a)
-        sl.addStretch(1)
-        self.lbl_sample = QLabel("")
-        self.lbl_sample.setObjectName("sub")
-        sl.addWidget(self.lbl_sample)
-        info.addLayout(sl)
-        self.pb_item = QProgressBar()
-        self.pb_item.setRange(0, 100)
-        self.pb_item.setValue(0)
-        self.pb_item.setFixedHeight(8)
-        info.addWidget(self.pb_item)
         self.lbl_time = QLabel("")
         self.lbl_time.setObjectName("sub")
         self.lbl_time.setWordWrap(True)
@@ -851,6 +736,7 @@ class MainWindow(QMainWindow):
         self.img.setAlignment(Qt.AlignCenter)
         self.img.setFixedSize(200, 150)
         self.img.setCursor(Qt.PointingHandCursor)
+        self.img.setToolTip("Click to open the image")
         self.img.mousePressEvent = lambda e: self.open_last_image()
         tv.addWidget(self.img)
         self.lbl_img = QLabel("Last finished image")
@@ -865,17 +751,24 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ scene items card
     def _build_items_card(self):
-        card = Card("Scene Items", "Collections and images found in the .blend")
-        self.items_card = card
-        self.d_scs = Donut("Scs", BLUE)
-        self.d_icon = Donut("Icon", ORANGE)
-        self.d_custom = Donut("Custom", PINK)
-        for d in (self.d_scs, self.d_icon, self.d_custom):
-            card.head.addWidget(d)
-            card.head.addSpacing(6)
+        card = Card("Scene Items", "Tick the images to render")
+        self.ed_search = QLineEdit()
+        self.ed_search.setObjectName("search")
+        self.ed_search.setPlaceholderText("Search...")
+        self.ed_search.addAction(make_icon("search", SUB), QLineEdit.LeadingPosition)
+        self.ed_search.setClearButtonEnabled(True)
+        self.ed_search.setFixedWidth(200)
+        self.ed_search.textChanged.connect(self.apply_filter)
+        card.head.addWidget(self.ed_search)
+        self.cmb_filter = QComboBox()
+        self.cmb_filter.addItems(["Show: all", "Show: Scs", "Show: Icon", "Show: Custom",
+                                  "Show: maps", "Show: objects"])
+        self.cmb_filter.setFixedWidth(140)
+        self.cmb_filter.currentIndexChanged.connect(self.apply_filter)
+        card.head.addWidget(self.cmb_filter)
 
-        mode = QHBoxLayout()
-        mode.setSpacing(6)
+        row = QHBoxLayout()
+        row.setSpacing(6)
         self.rb_all = QRadioButton("Render all")
         self.rb_checked = QRadioButton("Checked only")
         for rb in (self.rb_all, self.rb_checked):
@@ -886,17 +779,18 @@ class MainWindow(QMainWindow):
         self.mode_group.addButton(self.rb_checked)
         self.rb_all.setChecked(True)
         self.rb_all.toggled.connect(lambda *_: self._update_stats())
-        mode.addWidget(self.rb_all)
-        mode.addWidget(self.rb_checked)
-        mode.addSpacing(10)
-        for text, slot in (("Select all", lambda: self.set_all_checked(True)),
+        row.addWidget(self.rb_all)
+        row.addWidget(self.rb_checked)
+        row.addStretch(1)
+        tick = QLabel("Tick:")
+        tick.setObjectName("sub")
+        row.addWidget(tick)
+        for text, slot in (("All", lambda: self.set_all_checked(True)),
                            ("None", lambda: self.set_all_checked(False)),
-                           ("Scs only", lambda: self.check_prefix("Scs")),
-                           ("Icon only", lambda: self.check_prefix("Icon")),
-                           ("Expand / Collapse", self.toggle_expand)):
-            mode.addWidget(self._btn(text, slot, "pill"))
-        mode.addStretch(1)
-        card.lay.addLayout(mode)
+                           ("Scs", lambda: self.check_prefix("Scs")),
+                           ("Icon", lambda: self.check_prefix("Icon"))):
+            row.addWidget(self._btn(text, slot, "pill"))
+        card.lay.addLayout(row)
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Name", "Type", "Status"])
@@ -908,15 +802,10 @@ class MainWindow(QMainWindow):
         self.tree.itemDoubleClicked.connect(self._on_tree_double)
         card.lay.addWidget(self.tree, 1)
 
-        foot = QHBoxLayout()
-        self.lbl_selected = QLabel("No scene scanned yet.")
-        self.lbl_selected.setObjectName("sub")
-        foot.addWidget(self.lbl_selected)
-        foot.addStretch(1)
-        self.lbl_scene = QLabel("")
+        self.lbl_scene = QLabel("No scene scanned yet. Choose a .blend file in Project.")
         self.lbl_scene.setObjectName("sub")
-        foot.addWidget(self.lbl_scene)
-        card.lay.addLayout(foot)
+        self.lbl_scene.setWordWrap(True)
+        card.lay.addWidget(self.lbl_scene)
         return card
 
     # ------------------------------------------------------------------ log card
@@ -1221,7 +1110,6 @@ class MainWindow(QMainWindow):
         (self.rb_checked if s.get("mode") == "checked" else self.rb_all).setChecked(True)
         if s.get("blender_exe") and os.path.isfile(s["blender_exe"]):
             self._add_blender_item(s["blender_exe"], s["blender_exe"], select=True)
-        self._update_file_chip()
         self._on_size_changed()
 
     def _collect_settings(self):
@@ -1316,11 +1204,6 @@ class MainWindow(QMainWindow):
             self._add_blender_item(path, label, select=True)
 
     # ------------------------------------------------------------------ paths
-    def _update_file_chip(self):
-        p = self.ed_blend.text().strip().strip('"')
-        self.lbl_file_chip.setText(f"  {os.path.basename(p)}  " if p else "No .blend loaded")
-        self.lbl_file_chip.setToolTip(p)
-
     def browse_blend(self):
         start = os.path.dirname(self.ed_blend.text()) if self.ed_blend.text() else ""
         path, _ = QFileDialog.getOpenFileName(self, "Select .blend file", start, "Blender (*.blend)")
@@ -1330,7 +1213,6 @@ class MainWindow(QMainWindow):
     def set_blend(self, path):
         self._remember_unchecked()
         self.ed_blend.setText(os.path.abspath(path))
-        self._update_file_chip()
         if not self.ed_out.text().strip():
             self.ed_out.setText(os.path.join(os.path.dirname(path), "Render"))
         self.start_scan()
@@ -1390,7 +1272,6 @@ class MainWindow(QMainWindow):
     def _set_running(self, running):
         self.btn_render.setEnabled(not running)
         self.btn_scan.setEnabled(not running)
-        self.nav_buttons["scan"].setEnabled(not running)
         self.btn_update.setEnabled(not running)
         self.btn_stop.setEnabled(running)
 
@@ -1434,9 +1315,7 @@ class MainWindow(QMainWindow):
         m = self.RE_SAMPLE.search(line)
         if m:
             cur, tot = int(m.group(1)), int(m.group(2))
-            self.pb_item.setRange(0, max(1, tot))
-            self.pb_item.setValue(cur)
-            self.lbl_sample.setText(f"Sample {cur}/{tot}")
+            self.ring.set_value(cur / max(1, tot), f"{int(100 * cur / max(1, tot))}%", f"sample {cur}/{tot}")
             r = self.RE_REMAIN.search(line)
             self.item_remaining = r.group(1) if r else ""
             if not self.chk_verbose.isChecked():
@@ -1454,9 +1333,7 @@ class MainWindow(QMainWindow):
         elif ev == "item":
             self.item_start = time.time()
             self.item_remaining = ""
-            self.pb_item.setRange(0, 100)
-            self.pb_item.setValue(0)
-            self.lbl_sample.setText("Preparing...")
+            self.ring.set_value(0, "0%", "preparing")
             self.lbl_now.setText(f"{d['collection']}  ›  {d['label']}")
             res = d.get("res") or ["?", "?"]
             self.lbl_now_info.setText(f"Image {d['i']} of {d['total']}   ·   {res[0]}×{res[1]}   ·   "
@@ -1466,11 +1343,10 @@ class MainWindow(QMainWindow):
         elif ev == "done":
             self.done_count += 1
             self.done_secs.append(d.get("sec", 0))
-            self.pb_item.setValue(self.pb_item.maximum())
+            self.ring.set_value(1, "100%", "saved")
             self._mark_item(d["key"], f"Done  {d.get('sec', 0)}s", C_DONE)
             self.last_paths[d["key"]] = d.get("path")
             self.show_image(d.get("path"))
-            self._add_recent(d.get("path"), d.get("sec", 0))
             self._update_progress()
         elif ev == "error":
             self.done_count += 1
@@ -1483,7 +1359,6 @@ class MainWindow(QMainWindow):
 
     def _update_progress(self):
         t = max(self.total, 0)
-        self.ring.set_value(self.done_count / t if t else 0, f"{self.done_count}/{t}", "images")
         pct = int(100 * self.done_count / t) if t else 0
         self.st_done.set(f"{self.done_count} / {t}",
                          f"{pct}% complete  ·  " + (f"{self.error_count} error(s)" if self.error_count else "no errors"))
@@ -1549,7 +1424,6 @@ class MainWindow(QMainWindow):
                 self.lbl_status.setText(msg)
                 self.write_log("\n=== " + msg + " ===")
                 QApplication.alert(self)
-            self.lbl_sample.setText("")
         self._cleanup_temp()
 
     def _cleanup_temp(self):
@@ -1577,11 +1451,10 @@ class MainWindow(QMainWindow):
         if not r:
             return
         exe, blend, _ = r
-        self._update_file_chip()
         save_settings(self._collect_settings())
         fd, self.scan_json_path = tempfile.mkstemp(prefix="scs_scan_", suffix=".json")
         os.close(fd)
-        self.lbl_selected.setText("Scanning scene (Blender is opening the file)...")
+        self.lbl_scene.setText("Scanning scene (Blender is opening the file)...")
         self.lbl_status.setText("Scanning scene...")
         self.write_log(f"\n=== SCAN SCENE: {blend} ===")
         args = ["--background", blend, "--python", CORE_SCRIPT, "--python-exit-code", "1", "--",
@@ -1600,7 +1473,7 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         if not data:
-            self.lbl_selected.setText("Scan failed - see the log.")
+            self.lbl_scene.setText("Scan failed - see the Render Log.")
             self.lbl_status.setText(f"Scan failed (code {code}).")
             return
         self.scan_data = data
@@ -1672,17 +1545,15 @@ class MainWindow(QMainWindow):
 
         total = img_scs + img_icon + len(custom)
         self.scene_counts = (img_scs, img_icon, len(custom), total)
-        self.d_scs.set(img_scs, total)
-        self.d_icon.set(img_icon, total)
-        self.d_custom.set(len(custom), total)
-        self.st_total.set(total, f"Scs {n_scs} col · Icon {n_icon} col · Custom {len(custom)}")
+        self.st_total.set(total, f"Scs {img_scs}  ·  Icon {img_icon}  ·  Custom {len(custom)}")
 
         warn = []
         if not data.get("has_setup"):
             warn.append("no 'Setup' collection")
         if data.get("engine") != "CYCLES":
             warn.append(f"engine is {data.get('engine')} (GPU option only works with Cycles)")
-        self.lbl_scene.setText(f"Scene '{data.get('scene')}'  ·  Map: {'yes' if data.get('has_map') else 'no'}"
+        self.lbl_scene.setText(f"{os.path.basename(data.get('blend') or '')}  ·  scene '{data.get('scene')}'  ·  "
+                               f"{n_scs} Scs + {n_icon} Icon collections  ·  Map: {'yes' if data.get('has_map') else 'no'}"
                                + ("   ⚠ " + ", ".join(warn) if warn else ""))
         self.write_log(f"Scan complete: Scs {n_scs} ({img_scs} images), Icon {n_icon} ({img_icon} images), "
                        f"Custom {len(custom)}, total {total} images.")
@@ -1733,10 +1604,8 @@ class MainWindow(QMainWindow):
         if self.rb_checked.isChecked():
             self.st_selected.set(n_chk, f"Checked only  ·  {n_all - n_chk} skipped")
         else:
-            self.st_selected.set(n_all, "Mode: render all")
-        if n_all:
-            self.lbl_selected.setText(f"Checked: {n_chk} of {n_all} images"
-                                      + ("" if self.rb_checked.isChecked() else "  (ignored in 'Render all' mode)"))
+            self.st_selected.set(n_all, f"Render all  ·  {n_chk} of {n_all} ticked" if n_all else "Mode: render all")
+
 
     def set_all_checked(self, state):
         self.tree.blockSignals(True)
@@ -1755,13 +1624,6 @@ class MainWindow(QMainWindow):
         self._refresh_check_colors()
         self.rb_checked.setChecked(True)
         self._update_stats()
-
-    def toggle_expand(self):
-        any_open = any(self.tree.topLevelItem(i).isExpanded() for i in range(self.tree.topLevelItemCount()))
-        if any_open:
-            self.tree.collapseAll()
-        else:
-            self.tree.expandAll()
 
     def apply_filter(self, *_):
         text = self.ed_search.text().strip().lower()
@@ -1824,6 +1686,7 @@ class MainWindow(QMainWindow):
         self.item_start = 0
         self.render_start = time.time()
         self._update_progress()
+        self.ring.set_value(0, "0%", "this image")
         self.st_time.set("00:00", "ETA --:--")
         self.lbl_now.setText("Starting Blender...")
         self.lbl_now_info.setText("The first image can take a few minutes (shader compile / loading the scene).")
@@ -1888,14 +1751,15 @@ class MainWindow(QMainWindow):
         self.lbl_update_status.setText(
             f"You are on v{lver}. Latest release: {info.get('tag')} ({info.get('date', '')}).")
         if not updater.is_newer(info, lver):
-            self.dot.hide()
-            self.btn_bell.setToolTip("You are up to date")
+            self.nav_info.setText("  Info && Update")
+            self.nav_info.setStyleSheet("")
             self.write_log(f"[update] Up to date (v{lver}, latest release {info.get('tag')}).")
             if not silent:
                 QMessageBox.information(self, "Update", f"You are using the latest version (v{lver}).")
             return
-        self.dot.show()
-        self.btn_bell.setToolTip(f"New version {info.get('tag')} available")
+        self.nav_info.setText("  Info && Update  ●")
+        self.nav_info.setStyleSheet(f"color:{RED};")
+        self.nav_info.setToolTip(f"New version {info.get('tag')} available")
         self.lbl_update_status.setText(f"<b style='color:{GREEN}'>New version {info.get('tag')} available</b> "
                                        f"({info.get('date', '')}). You are on v{lver}.")
         notes = info.get("notes", "")
