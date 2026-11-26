@@ -47,7 +47,9 @@ SETTINGS_FILE = os.path.join(SETTINGS_DIR, "settings.json")
 C_RENDERING = QColor("#f0c050")
 C_DONE = QColor("#6fd36f")
 C_ERROR = QColor("#ff6b6b")
-C_DIM = QColor("#8a8f98")
+C_DIM = QColor("#6b7079")
+C_ON = QColor("#ffffff")
+C_PART = QColor("#9fc6ff")
 
 STYLE = """
 QWidget { background:#23262b; color:#dfe3e8; font-family:'Segoe UI'; font-size:10pt; }
@@ -80,7 +82,33 @@ QLabel#now { font-size:13pt; font-weight:bold; color:#f0c050; }
 QLabel#title { font-size:14pt; font-weight:bold; color:#8fc1ff; }
 QLabel#dim { color:#8a8f98; }
 QSplitter::handle { background:#2b2f36; }
+
+/* ---- O tich / radio: to, vien ro, tich = nen xanh + dau check trang ---- */
+QCheckBox, QRadioButton { spacing:8px; }
+QCheckBox::indicator, QTreeView::indicator {
+    width:16px; height:16px; border:2px solid #9aa3b0; border-radius:4px; background:#121417; }
+QCheckBox::indicator:hover, QTreeView::indicator:hover { border-color:#5aa0ff; background:#1b2230; }
+QCheckBox::indicator:checked, QTreeView::indicator:checked {
+    border-color:#2f80ed; background:#2f80ed; image:url(@UI@/check.svg); }
+QCheckBox::indicator:checked:hover, QTreeView::indicator:checked:hover { background:#4a93f5; border-color:#4a93f5; }
+QCheckBox::indicator:indeterminate, QTreeView::indicator:indeterminate {
+    border-color:#2f80ed; background:#1f4f8f; image:url(@UI@/partial.svg); }
+QCheckBox::indicator:disabled, QTreeView::indicator:disabled { border-color:#4a4f57; background:#202226; }
+QRadioButton::indicator { width:16px; height:16px; border:2px solid #9aa3b0; border-radius:10px; background:#121417; }
+QRadioButton::indicator:hover { border-color:#5aa0ff; }
+QRadioButton::indicator:checked { border-color:#2f80ed;
+    background:qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+        stop:0 #2f80ed, stop:0.5 #2f80ed, stop:0.6 #121417, stop:1 #121417); }
+QRadioButton:checked, QCheckBox:checked { color:#ffffff; }
+QRadioButton#mode { font-weight:bold; padding:4px 10px; border:1px solid #3a3f47; border-radius:5px; }
+QRadioButton#mode:checked { background:#1f3550; border-color:#2f80ed; }
+QTreeView::item { padding:3px 2px; }
 """
+
+
+def build_style():
+    ui_dir = os.path.join(APP_DIR, "ui").replace("\\", "/")
+    return STYLE.replace("@UI@", ui_dir)
 
 
 def human_time(sec):
@@ -147,13 +175,13 @@ class UpdateInstallThread(QThread):
     log = Signal(str)
     done = Signal(bool, str)
 
-    def __init__(self, branch, sha):
+    def __init__(self, remote):
         super().__init__()
-        self.branch, self.sha = branch, sha
+        self.remote = remote
 
     def run(self):
         try:
-            updater.download_and_install(self.branch, self.sha, log=self.log.emit)
+            updater.download_and_install(self.remote, log=self.log.emit)
             self.done.emit(True, "")
         except Exception as e:
             self.done.emit(False, str(e))
@@ -228,7 +256,7 @@ class MainWindow(QMainWindow):
         self.chk_auto_update = QCheckBox("Tự kiểm tra update khi mở")
         head.addWidget(self.chk_auto_update)
         self.btn_update = self._btn("⟳  Update online", lambda: self.check_update(silent=False), "update",
-                                    f"Kiểm tra & cập nhật từ {updater.REPO_URL}")
+                                    f"Kiểm tra & cập nhật từ {updater.RELEASES_URL}")
         head.addWidget(self.btn_update)
         main.addLayout(head)
 
@@ -305,6 +333,8 @@ class MainWindow(QMainWindow):
         self.mode_group = QButtonGroup(self)
         self.mode_group.addButton(self.rb_all)
         self.mode_group.addButton(self.rb_checked)
+        self.rb_all.setObjectName("mode")
+        self.rb_checked.setObjectName("mode")
         self.rb_all.setChecked(True)
         self.rb_all.toggled.connect(self._update_tree_enabled)
         mode.addWidget(self.rb_all)
@@ -678,8 +708,7 @@ class MainWindow(QMainWindow):
             return
         self.tree.blockSignals(True)
         it.setText(2, text)
-        for c in range(3):
-            it.setForeground(c, QBrush(color))
+        it.setForeground(2, QBrush(color))
         self.tree.blockSignals(False)
         if scroll:
             self.tree.scrollToItem(it)
@@ -834,6 +863,7 @@ class MainWindow(QMainWindow):
         if len(self.key_to_item) < 80:
             self.tree.expandAll()
         self.tree.blockSignals(False)
+        self._refresh_check_colors()
 
         warn = []
         if not data.get("has_setup"):
@@ -867,7 +897,22 @@ class MainWindow(QMainWindow):
 
     def _on_tree_changed(self, item, col):
         if col == 0:
+            self._refresh_check_colors()
             self._update_selected_label()
+
+    def _refresh_check_colors(self):
+        """Muc duoc tich: chu sang; khong tich: chu mo -> nhin la biet ngay."""
+        self.tree.blockSignals(True)
+        for it in self.key_to_item.values():
+            on = it.checkState(0) == Qt.Checked
+            col = C_ON if on else C_DIM
+            it.setForeground(0, QBrush(col))
+            it.setForeground(1, QBrush(col))
+        for i in range(self.tree.topLevelItemCount()):
+            top = self.tree.topLevelItem(i)
+            st = top.checkState(0)
+            top.setForeground(0, QBrush(C_ON if st == Qt.Checked else C_PART if st == Qt.PartiallyChecked else C_DIM))
+        self.tree.blockSignals(False)
 
     def _on_tree_double(self, item, col):
         d = item.data(0, Qt.UserRole) or {}
@@ -889,6 +934,7 @@ class MainWindow(QMainWindow):
         for it in self.key_to_item.values():
             it.setCheckState(0, Qt.Checked if state else Qt.Unchecked)
         self.tree.blockSignals(False)
+        self._refresh_check_colors()
         self._update_selected_label()
 
     def check_prefix(self, prefix):
@@ -897,6 +943,7 @@ class MainWindow(QMainWindow):
             p = (it.data(0, Qt.UserRole) or {}).get("prefix")
             it.setCheckState(0, Qt.Checked if p == prefix else Qt.Unchecked)
         self.tree.blockSignals(False)
+        self._refresh_check_colors()
         self._update_selected_label()
         self.rb_checked.setChecked(True)
 
@@ -992,22 +1039,24 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Update", f"Không kiểm tra được update:\n{err}")
             self.write_log(f"[update] lỗi: {err}")
             return
-        lver, lsha = updater.local_version()
-        newer = updater.is_newer(info, lver, lsha)
+        lver = updater.local_version()
         rver = info.get("version") or "?"
-        if not newer:
-            self.write_log(f"[update] Đang dùng bản mới nhất (v{lver}).")
+        if not updater.is_newer(info, lver):
+            self.write_log(f"[update] Đang dùng bản mới nhất (v{lver}, release mới nhất: {info.get('tag')}).")
             if not silent:
                 QMessageBox.information(self, "Update", f"Bạn đang dùng bản mới nhất (v{lver}).")
             return
-        msg = (f"Có bản mới trên GitHub!\n\nHiện tại: v{lver}\nMới: v{rver}"
-               f"\nCommit: {(info.get('sha') or '')[:7]}  {info.get('date', '')}\n{info.get('message', '')}"
-               f"\n\nCập nhật ngay? (App sẽ tự khởi động lại)")
+        notes = info.get("notes", "")
+        if len(notes) > 900:
+            notes = notes[:900] + "..."
+        msg = (f"Có bản mới: {info.get('name')}  ({info.get('date', '')})\n"
+               f"Hiện tại: v{lver}  →  Mới: v{rver}\n\n{notes}\n\n"
+               f"Cập nhật ngay? (App sẽ tự khởi động lại)")
         if QMessageBox.question(self, "Update", msg) != QMessageBox.Yes:
             return
         self.btn_update.setEnabled(False)
         self.btn_update.setText("Đang tải...")
-        th = UpdateInstallThread(info.get("branch", "main"), info.get("sha"))
+        th = UpdateInstallThread(info)
         th.log.connect(lambda s: self.write_log("[update] " + s))
         th.done.connect(self._on_update_installed)
         th.finished.connect(lambda: self.threads.remove(th) if th in self.threads else None)
@@ -1035,7 +1084,7 @@ def main():
         except Exception:
             pass
     app = QApplication(sys.argv)
-    app.setStyleSheet(STYLE)
+    app.setStyleSheet(build_style())
     ico = os.path.join(APP_DIR, "icon.ico")
     if os.path.isfile(ico):
         app.setWindowIcon(QIcon(ico))

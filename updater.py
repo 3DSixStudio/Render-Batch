@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Update online tu GitHub: https://github.com/3DSixStudio/Render-Batch"""
+"""Update online qua GitHub Releases: https://github.com/3DSixStudio/Render-Batch/releases
+
+Chi lay ban trong Release MOI NHAT (khong lay code dang nam tren nhanh main).
+Uu tien file .zip dinh kem trong release; neu khong co thi dung source zip cua tag.
+"""
 
 import io
 import os
@@ -13,13 +17,14 @@ import urllib.error
 OWNER = "3DSixStudio"
 REPO = "Render-Batch"
 REPO_URL = f"https://github.com/{OWNER}/{REPO}"
+RELEASES_URL = f"{REPO_URL}/releases"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(APP_DIR, ".installed_version.json")
 
 # File/thu muc KHONG bao gio bi ghi de khi update
 PROTECTED = {".git", ".installed_version.json", "_backup_update", "__pycache__"}
 
-UA = {"User-Agent": "SCS-Batch-Render-Updater"}
+UA = {"User-Agent": "SCS-Batch-Render-Updater", "Accept": "application/vnd.github+json"}
 
 
 def _get(url, timeout=20):
@@ -29,88 +34,80 @@ def _get(url, timeout=20):
 
 
 def local_version():
-    ver = "?"
     try:
         with open(os.path.join(APP_DIR, "version.txt"), "r", encoding="utf-8") as f:
-            ver = f.read().strip() or "?"
+            return f.read().strip() or "0"
     except Exception:
-        pass
-    sha = None
-    try:
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
-            sha = json.load(f).get("sha")
-    except Exception:
-        pass
-    return ver, sha
+        return "0"
+
+
+def version_tuple(v):
+    parts = []
+    for x in str(v or "").strip().lstrip("vV").split("."):
+        num = "".join(ch for ch in x if ch.isdigit())
+        parts.append(int(num) if num else 0)
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts)
 
 
 def check_remote():
-    """Tra ve dict {branch, sha, message, date, version}. Raise neu loi mang."""
-    info = {"branch": "main", "sha": None, "message": "", "date": "", "version": None}
+    """Doc Release moi nhat. Tra ve dict {tag, version, name, notes, date, url, download_url}."""
     try:
-        repo = json.loads(_get(f"https://api.github.com/repos/{OWNER}/{REPO}"))
-        info["branch"] = repo.get("default_branch") or "main"
-        c = json.loads(_get(f"https://api.github.com/repos/{OWNER}/{REPO}/commits/{info['branch']}"))
-        info["sha"] = c.get("sha")
-        msg = (c.get("commit", {}).get("message") or "").strip()
-        info["message"] = msg.splitlines()[0] if msg else ""
-        info["date"] = c.get("commit", {}).get("committer", {}).get("date", "")
+        rel = json.loads(_get(f"https://api.github.com/repos/{OWNER}/{REPO}/releases/latest"))
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            raise RuntimeError("Khong tim thay repo (repo private, sai ten, hoac chua co commit nao).")
+            raise RuntimeError("Repo chua co Release nao (hoac repo private).")
         if e.code == 403:
-            info["sha"] = None  # bi gioi han API -> van cho phep tai ban moi nhat
-        else:
-            raise
-    for br in (info["branch"], "main", "master"):
-        try:
-            info["version"] = _get(f"https://raw.githubusercontent.com/{OWNER}/{REPO}/{br}/version.txt").decode("utf-8").strip()
-            info["branch"] = br
+            raise RuntimeError("GitHub tam gioi han so lan kiem tra (rate limit). Thu lai sau it phut.")
+        raise
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Khong ket noi duoc GitHub: {e.reason}")
+
+    download = None
+    for a in rel.get("assets", []):
+        if a.get("name", "").lower().endswith(".zip"):
+            download = a.get("browser_download_url")
             break
-        except Exception:
-            continue
-    return info
+    if not download:
+        download = rel.get("zipball_url")
+
+    tag = rel.get("tag_name", "")
+    return {
+        "tag": tag,
+        "version": tag.lstrip("vV"),
+        "name": rel.get("name") or tag,
+        "notes": (rel.get("body") or "").strip(),
+        "date": (rel.get("published_at") or "")[:10],
+        "url": rel.get("html_url") or RELEASES_URL,
+        "download_url": download,
+    }
 
 
-def _version_tuple(v):
-    try:
-        return tuple(int(x) for x in str(v).strip().lstrip("vV").split("."))
-    except Exception:
-        return None
+def is_newer(remote, local_ver):
+    return version_tuple(remote.get("version")) > version_tuple(local_ver)
 
 
-def is_newer(remote, local_ver, local_sha):
-    """True neu ban tren GitHub moi hon ban dang cai."""
-    rv, lv = _version_tuple(remote.get("version")), _version_tuple(local_ver)
-    if rv and lv and rv != lv:
-        return rv > lv
-    if remote.get("sha") and local_sha:
-        return remote["sha"] != local_sha
-    if rv and lv:
-        return False  # cung version, chua co sha (vd: vua tai ZIP) -> coi nhu moi nhat
-    if remote.get("sha") and not local_sha:
-        return True   # khong doc duoc version -> cho phep update
-    return False
-
-
-def download_and_install(branch, sha=None, log=print):
-    url = f"https://codeload.github.com/{OWNER}/{REPO}/zip/refs/heads/{branch}"
-    log(f"Dang tai: {url}")
-    data = _get(url, timeout=120)
+def download_and_install(remote, log=print):
+    url = remote["download_url"]
+    log(f"Dang tai {remote.get('tag')}: {url}")
+    data = _get(url, timeout=180)
     log(f"Da tai {len(data) / 1024:.0f} KB, dang giai nen...")
 
     zf = zipfile.ZipFile(io.BytesIO(data))
-    names = zf.namelist()
-    if not names:
+    files = [n for n in zf.namelist() if not n.endswith("/")]
+    if not files:
         raise RuntimeError("File zip rong.")
-    top = names[0].split("/")[0] + "/"
+    # Neu moi file nam chung 1 thu muc goc (vd: Render-Batch/...) thi bo thu muc do
+    tops = {n.split("/")[0] for n in files}
+    strip = (tops.pop() + "/") if len(tops) == 1 and all("/" in n for n in files) else ""
+    if not any(n[len(strip):] == "scs_batch_render_app.py" for n in files):
+        raise RuntimeError("Goi tai ve khong dung cau truc (khong thay scs_batch_render_app.py).")
 
     backup = os.path.join(APP_DIR, "_backup_update", datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
     count = 0
-    for n in names:
-        if not n.startswith(top) or n.endswith("/"):
-            continue
-        rel = n[len(top):]
+    for n in files:
+        rel = n[len(strip):]
         if not rel or rel.split("/")[0] in PROTECTED:
             continue
         dst = os.path.join(APP_DIR, *rel.split("/"))
@@ -124,7 +121,7 @@ def download_and_install(branch, sha=None, log=print):
         count += 1
 
     with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump({"sha": sha, "branch": branch,
+        json.dump({"tag": remote.get("tag"),
                    "installed_at": datetime.datetime.now().isoformat(timespec="seconds")}, f, indent=1)
-    log(f"Da cap nhat {count} file. Ban cu luu tai: {backup}")
+    log(f"Da cap nhat {count} file len {remote.get('tag')}. Ban cu luu tai: {backup}")
     return count

@@ -5,7 +5,7 @@ App Windows (PySide6) để render hàng loạt các collection `Scs_N` / `Icon_
 ## Cài & chạy
 
 1. Cài **Python 3.10+** từ https://www.python.org/downloads/ (tick *Add python.exe to PATH*).
-2. Tải repo về (Code → Download ZIP) và giải nén vào một thư mục cố định.
+2. Vào [Releases](https://github.com/3DSixStudio/Render-Batch/releases/latest), tải file `SCS_Batch_Render_vX.Y.Z.zip` và giải nén vào một thư mục cố định.
 3. Chạy **`run.bat`**. Lần đầu nó tự cài PySide6.
 4. (Tùy chọn) chạy `Tao_Shortcut_Desktop.bat` để tạo shortcut ngoài Desktop.
 
@@ -18,7 +18,7 @@ App Windows (PySide6) để render hàng loạt các collection `Scs_N` / `Icon_
 - **Dừng ngay**: kill Blender lập tức.
 - **Màn hình Đang render**: mục đang render, resolution/frame, tiến độ sample, tổng n/m, thời gian và ước tính còn lại, thumbnail ảnh vừa xong (bấm để mở).
 - **Log** đầy đủ như bản .bat, có lưu log ra file.
-- **Update online** từ GitHub (repo này); bản cũ được backup vào `_backup_update/`.
+- **Update online** qua GitHub Releases: chỉ nhận bản đã phát hành (Release mới nhất); bản cũ được backup vào `_backup_update/`.
 - Ô **Độ phân giải %** để render thử nhanh (100% = full).
 
 ## Quy tắc render
@@ -43,4 +43,6 @@ blender --background scene.blend --python scs_render_core.py --python-exit-code 
 
 ## Phát hành bản mới
 
-Sửa code → tăng số trong `version.txt` → push lên `main`. App của mọi người bấm *Update online* sẽ thấy bản mới.
+1. Sửa code, tăng số trong `version.txt` (vd `1.0.1`), push lên `main`.
+2. Tạo Release với tag `v1.0.1` (đúng số trong `version.txt`), đính kèm `SCS_Batch_Render_v1.0.1.zip` (thư mục gốc `Render-Batch/`).
+3. App của mọi người bấm *Update online* sẽ thấy bản mới. Code chỉ push lên `main` mà chưa Release thì app không nhận.
