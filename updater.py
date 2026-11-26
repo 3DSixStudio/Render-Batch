@@ -7,7 +7,10 @@ Uu tien file .zip dinh kem trong release; neu khong co thi dung source zip cua t
 
 import io
 import os
+import sys
 import json
+import tempfile
+import subprocess
 import shutil
 import zipfile
 import datetime
@@ -18,7 +21,9 @@ OWNER = "3DSixStudio"
 REPO = "Render-Batch"
 REPO_URL = f"https://github.com/{OWNER}/{REPO}"
 RELEASES_URL = f"{REPO_URL}/releases"
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+FROZEN = getattr(sys, "frozen", False)        # installed with the Setup (RenderBatch.exe)
+APP_DIR = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.abspath(__file__))
+RES_DIR = getattr(sys, "_MEIPASS", APP_DIR)
 STATE_FILE = os.path.join(APP_DIR, ".installed_version.json")
 
 # File/thu muc KHONG bao gio bi ghi de khi update
@@ -35,7 +40,7 @@ def _get(url, timeout=20):
 
 def local_version():
     try:
-        with open(os.path.join(APP_DIR, "version.txt"), "r", encoding="utf-8") as f:
+        with open(os.path.join(RES_DIR, "version.txt"), "r", encoding="utf-8") as f:
             return f.read().strip() or "0"
     except Exception:
         return "0"
@@ -65,10 +70,13 @@ def check_remote():
         raise RuntimeError(f"Could not connect to GitHub: {e.reason}")
 
     download = None
+    setup_url = None
     for a in rel.get("assets", []):
-        if a.get("name", "").lower().endswith(".zip"):
+        name = a.get("name", "").lower()
+        if name.endswith(".zip") and not download:
             download = a.get("browser_download_url")
-            break
+        if name.endswith(".exe") and "setup" in name:
+            setup_url = a.get("browser_download_url")
     if not download:
         download = rel.get("zipball_url")
 
@@ -81,6 +89,7 @@ def check_remote():
         "date": (rel.get("published_at") or "")[:10],
         "url": rel.get("html_url") or RELEASES_URL,
         "download_url": download,
+        "setup_url": setup_url,
     }
 
 
@@ -88,7 +97,27 @@ def is_newer(remote, local_ver):
     return version_tuple(remote.get("version")) > version_tuple(local_ver)
 
 
+def run_setup(remote, log=print):
+    """Installed app (RenderBatch.exe): download the new Setup and run it silently.
+    The setup closes the app, installs over it and starts it again."""
+    url = remote.get("setup_url")
+    if not url:
+        raise RuntimeError("This release has no Setup.exe yet. Please try again in a few minutes.")
+    log(f"Downloading setup {remote.get('tag')}: {url}")
+    data = _get(url, timeout=600)
+    path = os.path.join(tempfile.gettempdir(), f"Render_Batch_Setup_{remote.get('tag', 'new')}.exe")
+    with open(path, "wb") as f:
+        f.write(data)
+    log(f"Downloaded {len(data) / 1048576:.1f} MB, starting the installer...")
+    flags = 0x00000008 | 0x00000200 if sys.platform == "win32" else 0   # DETACHED_PROCESS | NEW_PROCESS_GROUP
+    subprocess.Popen([path, "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"],
+                     creationflags=flags, close_fds=True)
+    return path
+
+
 def download_and_install(remote, log=print):
+    if FROZEN:
+        return run_setup(remote, log)
     url = remote["download_url"]
     log(f"Downloading {remote.get('tag')}: {url}")
     data = _get(url, timeout=180)

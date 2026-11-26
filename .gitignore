@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 .installed_version.json
 _backup_update/
+build/
+dist/
+dist_installer/

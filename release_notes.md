@@ -1,7 +1,8 @@
-**Render Batch v1.3.3**
+**Render Batch v1.4.0** — Windows installer
 
-- The **Preview** frame now has the **2796 × 2048** aspect ratio and is as large as the space allows (both workspaces); the rendered image is fitted inside it.
-- Preview card is more compact so the image gets more room; file name, size and timing are shown on one line under the image.
-- Asset Render: after a **real** render finishes, the `_Test` folder created by **Test 1 file** is deleted automatically.
-- Icon & SCS: Scene Items toolbar rearranged so nothing gets cut off (search + filter, render mode, tick buttons on their own rows).
-- Asset Render log now shows the colour management in use (Standard).
+- New **Setup installer**: download `Render_Batch_Setup_v1.4.0.exe`, run it and click Next → Install like any other program.
+  - No Python needed any more, no admin rights needed.
+  - Start Menu shortcut, optional Desktop shortcut, uninstall from Windows Settings › Apps.
+- **Updates stay one click**: Info & Update → Check for updates downloads the new setup, installs it silently and reopens the app.
+- Your settings are kept (they are stored in %APPDATA%\SCS_Batch_Render).
+- Running from source with `run.bat` still works and still updates the source files as before.

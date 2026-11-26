@@ -1,12 +1,14 @@
 name: Auto Release
 
-# Tu tao GitHub Release khi so trong version.txt thay doi tren nhanh main.
+# Builds RenderBatch.exe + the Windows installer and publishes a GitHub Release
+# whenever the number in version.txt changes on main.
 on:
   push:
     branches: [main]
     paths:
       - "version.txt"
       - "release_notes.md"
+      - "installer/**"
       - ".github/workflows/release.yml"
   workflow_dispatch:
 
@@ -15,13 +17,16 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Doc version
+      - name: Read version
         id: ver
         run: |
           V="$(tr -d ' \r\n' < version.txt)"
@@ -29,17 +34,52 @@ jobs:
           echo "tag=v$V" >> "$GITHUB_OUTPUT"
           if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag v$V already has a release -> nothing to do. Bump version.txt to release."
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Dong goi ZIP
+      - uses: actions/setup-python@v5
+        if: steps.ver.outputs.exists == 'false'
+        with:
+          python-version: "3.11"
+
+      - name: Build RenderBatch.exe (PyInstaller)
+        if: steps.ver.outputs.exists == 'false'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller -r requirements.txt
+          pyinstaller installer/RenderBatch.spec --noconfirm
+          ls dist/RenderBatch
+
+      - name: Self-test the packaged app
+        if: steps.ver.outputs.exists == 'false'
+        run: |
+          export RB_SELFTEST="$(cygpath -w "$PWD/selftest.json")"
+          timeout 120 ./dist/RenderBatch/RenderBatch.exe || true
+          for i in $(seq 1 60); do [ -f selftest.json ] && break; sleep 1; done
+          cat selftest.json
+          grep -q '"core": true' selftest.json
+          grep -q '"asset_core": true' selftest.json
+          grep -q '"icon": true' selftest.json
+
+      - name: Build installer (Inno Setup)
+        if: steps.ver.outputs.exists == 'false'
+        run: |
+          ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          if [ ! -f "$ISCC" ]; then
+            choco install innosetup -y --no-progress
+          fi
+          MSYS_NO_PATHCONV=1 "$ISCC" "/DMyAppVersion=${{ steps.ver.outputs.version }}" installer/RenderBatch.iss
+          ls -la dist_installer
+
+      - name: Package source zip
         if: steps.ver.outputs.exists == 'false'
         run: |
           git archive --format=zip --prefix=Render-Batch/ \
             -o "Render_Batch_${{ steps.ver.outputs.tag }}.zip" HEAD
 
-      - name: Tao Release
+      - name: Create release
         if: steps.ver.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -50,11 +90,9 @@ jobs:
           else
             NOTES_ARGS=(--generate-notes)
           fi
-          gh release create "$TAG" "Render_Batch_${TAG}.zip" \
+          gh release create "$TAG" \
+            "dist_installer/Render_Batch_Setup_${TAG}.exe" \
+            "Render_Batch_${TAG}.zip" \
             --target "$GITHUB_SHA" \
             --title "Render Batch $TAG" \
             "${NOTES_ARGS[@]}"
-
-      - name: Bo qua (tag da ton tai)
-        if: steps.ver.outputs.exists == 'true'
-        run: echo "Tag ${{ steps.ver.outputs.tag }} da co Release -> bo qua. Tang so trong version.txt de ra ban moi."

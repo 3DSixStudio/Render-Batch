@@ -28,9 +28,11 @@ from PySide6.QtWidgets import (
 import blender_finder
 import updater
 
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
-CORE_SCRIPT = os.path.join(APP_DIR, "scs_render_core.py")
-ASSET_CORE = os.path.join(APP_DIR, "asset_render_core.py")
+FROZEN = getattr(sys, "frozen", False)            # True when running the installed RenderBatch.exe
+APP_DIR = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.abspath(__file__))
+RES_DIR = getattr(sys, "_MEIPASS", APP_DIR)          # bundled data (core scripts, ui, version.txt)
+CORE_SCRIPT = os.path.join(RES_DIR, "scs_render_core.py")
+ASSET_CORE = os.path.join(RES_DIR, "asset_render_core.py")
 APP_NAME = "Render Batch"
 APP_AUTHOR = "Hari"
 DEFAULT_RES = {"Scs": (2796, 2048), "Icon": (2048, 2048)}
@@ -38,7 +40,7 @@ DEFAULT_RES = {"Scs": (2796, 2048), "Icon": (2048, 2048)}
 
 def read_version():
     try:
-        with open(os.path.join(APP_DIR, "version.txt"), "r", encoding="utf-8") as f:
+        with open(os.path.join(RES_DIR, "version.txt"), "r", encoding="utf-8") as f:
             return f.read().strip()
     except Exception:
         return "?"
@@ -228,7 +230,7 @@ def make_icon(name, color=SUB, size=20):
 
 
 def build_style():
-    ui_dir = os.path.join(APP_DIR, "ui").replace("\\", "/")
+    ui_dir = os.path.join(RES_DIR, "ui").replace("\\", "/")
     return STYLE.replace("@UI@", ui_dir)
 
 
@@ -608,7 +610,7 @@ class MainWindow(QMainWindow):
 
         brand = QHBoxLayout()
         logo = QLabel()
-        ico = os.path.join(APP_DIR, "ui", "icon.png")
+        ico = os.path.join(RES_DIR, "ui", "icon.png")
         if os.path.isfile(ico):
             logo.setPixmap(QPixmap(ico).scaled(34, 34, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         brand.addWidget(logo)
@@ -1045,7 +1047,7 @@ class MainWindow(QMainWindow):
         hh.setContentsMargins(16, 14, 16, 14)
         hh.setSpacing(14)
         logo = QLabel()
-        ico = os.path.join(APP_DIR, "ui", "icon.png")
+        ico = os.path.join(RES_DIR, "ui", "icon.png")
         if os.path.isfile(ico):
             logo.setPixmap(QPixmap(ico).scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         hh.addWidget(logo)
@@ -1128,7 +1130,7 @@ class MainWindow(QMainWindow):
     @staticmethod
     def _read_release_notes():
         try:
-            with open(os.path.join(APP_DIR, "release_notes.md"), "r", encoding="utf-8") as f:
+            with open(os.path.join(RES_DIR, "release_notes.md"), "r", encoding="utf-8") as f:
                 lines = [l for l in f.read().strip().splitlines() if not l.startswith("**Render Batch v")]
             return "\n".join(lines).strip() or "No release notes."
         except Exception:
@@ -1794,7 +1796,7 @@ class MainWindow(QMainWindow):
     def save_log(self, log=None):
         log = log or self.log
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save log", os.path.join(self.ed_out.text() or APP_DIR,
+            self, "Save log", os.path.join(self.ed_out.text() or os.path.expanduser("~"),
                                            f"render_log_{time.strftime('%Y%m%d_%H%M%S')}.txt"), "Text (*.txt)")
         if path:
             with open(path, "w", encoding="utf-8") as f:
@@ -2460,9 +2462,15 @@ class MainWindow(QMainWindow):
         if not ok:
             QMessageBox.critical(self, "Update", f"Update failed:\n{err}")
             return
-        QMessageBox.information(self, "Update", "Update installed. The app will now restart.")
         self._remember_unchecked()
         save_settings(self._collect_settings())
+        if FROZEN:
+            # The setup was started in the background; it closes this app, installs and reopens it.
+            QMessageBox.information(self, "Update", "The new version is being installed.\n"
+                                                    "Render Batch will close and reopen automatically.")
+            QApplication.quit()
+            return
+        QMessageBox.information(self, "Update", "Update installed. The app will now restart.")
         subprocess.Popen([sys.executable, os.path.abspath(__file__)], cwd=APP_DIR)
         QApplication.quit()
 
@@ -2478,12 +2486,30 @@ def main():
     app.setApplicationName(APP_NAME)
     app.setStyleSheet(build_style())
     for ico in ("icon.ico", os.path.join("ui", "icon.png")):
-        p = os.path.join(APP_DIR, ico)
+        p = os.path.join(RES_DIR, ico)
         if os.path.isfile(p):
             app.setWindowIcon(QIcon(p))
             break
     w = MainWindow()
     w.show()
+
+    def _wait_threads():
+        for th in list(w.threads):
+            th.wait(3000)
+    app.aboutToQuit.connect(_wait_threads)
+    report = os.environ.get("RB_SELFTEST")
+    if report:
+        # used by the build pipeline: check the packaged app starts and finds its files, then quit
+        def _selftest():
+            data = {"frozen": bool(FROZEN), "version": APP_VERSION, "res_dir": RES_DIR,
+                    "core": os.path.isfile(CORE_SCRIPT), "asset_core": os.path.isfile(ASSET_CORE),
+                    "icon": os.path.isfile(os.path.join(RES_DIR, "ui", "icon.png")),
+                    "check_svg": os.path.isfile(os.path.join(RES_DIR, "ui", "check.svg")),
+                    "pages": w.stack.count()}
+            with open(report, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=1)
+            app.quit()
+        QTimer.singleShot(1500, _selftest)
     sys.exit(app.exec())
 
 

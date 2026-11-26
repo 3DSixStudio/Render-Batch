@@ -6,12 +6,17 @@ Windows desktop app (PySide6) that batch renders the `Scs_N` / `Icon_N` collecti
 
 Created by **Hari**.
 
-## Install & run
+## Install
 
-1. Install **Python 3.10+** from https://www.python.org/downloads/ (tick *Add python.exe to PATH*).
-2. Download the latest `Render_Batch_vX.Y.Z.zip` from [Releases](https://github.com/3DSixStudio/Render-Batch/releases/latest) and unzip it to a permanent folder.
-3. Run **`run.bat`**. The first run installs PySide6 automatically.
-4. Optional: run `Create_Desktop_Shortcut.bat` to create a Desktop shortcut (with the app icon).
+1. Download **`Render_Batch_Setup_vX.Y.Z.exe`** from [Releases](https://github.com/3DSixStudio/Render-Batch/releases/latest).
+2. Run it and click through the installer (no admin rights needed; installs to `%LOCALAPPDATA%\Programs\Render Batch`, adds Start Menu and optional Desktop shortcuts, and an uninstaller in Windows Settings › Apps).
+3. Updates: open **Info & Update → Check for updates**. The app downloads the new setup, installs it silently and reopens by itself.
+
+No Python needed for the installed version.
+
+### Run from source (developers)
+
+Install Python 3.10+, download the source zip (or `git clone`), run **`run.bat`** (installs PySide6 on first run). In this mode updates replace the source files.
 
 ## Layout
 
@@ -60,8 +65,8 @@ blender --background scene.blend --python scs_render_core.py --python-exit-code 
 
 ## Releasing (automatic)
 
-1. Change the code, describe the changes in `release_notes.md`, bump `version.txt` (e.g. `1.1.1`).
-2. Push to `main` → GitHub Actions (`.github/workflows/release.yml`) packages `Render_Batch_v1.1.1.zip` and publishes release `v1.1.1`.
-3. Users click *Info → Check for updates*. Pushes without a version bump do not create a release.
+1. Change the code, describe the changes in `release_notes.md`, bump `version.txt` (e.g. `1.4.1`).
+2. Push to `main` → GitHub Actions (`.github/workflows/release.yml`, Windows runner) builds `RenderBatch.exe` with PyInstaller (`installer/RenderBatch.spec`), self-tests it, builds the installer with Inno Setup (`installer/RenderBatch.iss`) and publishes release `v1.4.1` with `Render_Batch_Setup_v1.4.1.exe` and the source zip.
+3. Users click *Info & Update → Check for updates*. Pushes without a version bump do not create a release.
 
 To regenerate the icon: `python tools/make_icon.py` (needs Pillow).
