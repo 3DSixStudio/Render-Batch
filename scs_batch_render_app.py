@@ -111,7 +111,7 @@ QLabel#chip { background:#ffffff; border:1px solid #eceef5; border-radius:9px; p
 /* cards */
 QFrame#card { background:#ffffff; border-radius:16px; }
 QFrame#stat { border-radius:14px; }
-QLabel#statValue { font-size:20pt; font-weight:800; }
+QLabel#statValue { font-size:18pt; font-weight:800; }
 QLabel#statTitle { font-size:9pt; font-weight:700; }
 QLabel#statSub { font-size:8pt; color:#8b90a5; }
 QLabel#nowTitle { font-size:13pt; font-weight:800; }
@@ -307,7 +307,7 @@ class StatCard(QFrame):
         super().__init__()
         self.setObjectName("stat")
         self.setStyleSheet(f"QFrame#stat {{ background:{bg}; }}")
-        self.setMinimumHeight(104)
+        self.setMinimumHeight(84)
         v = QVBoxLayout(self)
         v.setContentsMargins(14, 12, 14, 12)
         v.setSpacing(2)
@@ -526,70 +526,16 @@ class MainWindow(QMainWindow):
         outer = QHBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-
         outer.addWidget(self._build_sidebar())
 
-        content = QWidget()
-        cv = QVBoxLayout(content)
-        cv.setContentsMargins(26, 20, 26, 20)
-        cv.setSpacing(16)
-
-        # heading + main actions (the only Start / Stop buttons)
-        hrow = QHBoxLayout()
-        hrow.setSpacing(10)
-        col = QVBoxLayout()
-        col.setSpacing(0)
-        h = QLabel("Render Overview")
-        h.setObjectName("h1")
-        col.addWidget(h)
-        self.lbl_status = QLabel("Ready.")
-        self.lbl_status.setObjectName("sub")
-        col.addWidget(self.lbl_status)
-        hrow.addLayout(col)
-        hrow.addStretch(1)
-        self.btn_stop = self._btn("  Stop Now", self.stop_now, "danger", icon="stop", icon_color=RED)
-        self.btn_stop.setEnabled(False)
-        self.btn_render = self._btn("  Start Render", self.start_render, "primary", icon="play", icon_color="#ffffff")
-        self.btn_render.setMinimumWidth(170)
-        hrow.addWidget(self.btn_stop)
-        hrow.addWidget(self.btn_render)
-        cv.addLayout(hrow)
-
-        # stat cards (the only place for counts / overall progress / time)
-        stats = QHBoxLayout()
-        stats.setSpacing(14)
-        self.st_total = StatCard("Images In Scene", "#eaf3ff", BLUE)
-        self.st_selected = StatCard("Will Render", "#fff3e6", ORANGE)
-        self.st_done = StatCard("Rendered", "#f1edff", PURPLE)
-        self.st_time = StatCard("Elapsed Time", "#ffeef2", PINK)
-        for c in (self.st_total, self.st_selected, self.st_done, self.st_time):
-            stats.addWidget(c)
-        self.st_total.set("0", "Scan a scene to count")
-        self.st_selected.set("0", "Mode: render all")
-        self.st_done.set("0 / 0", "No errors")
-        self.st_time.set("00:00", "ETA --:--")
-        cv.addLayout(stats)
-
-        mid = QHBoxLayout()
-        mid.setSpacing(14)
-        mid.addWidget(self._build_project_card(), 5)
-        mid.addWidget(self._build_now_card(), 6)
-        cv.addLayout(mid)
-
-        bot = QHBoxLayout()
-        bot.setSpacing(14)
-        bot.addWidget(self._build_items_card(), 11)
-        bot.addWidget(self._build_log_card(), 9)
-        cv.addLayout(bot, 1)
-
         self.stack = QStackedWidget()
-        self.stack.addWidget(content)                        # 0 dashboard
-        self.stack.addWidget(self._build_asset_page())       # 1 asset render
-        self.stack.addWidget(self._build_settings_page())    # 2 settings
-        self.stack.addWidget(self._build_info_page())        # 3 info
+        self.stack.addWidget(self._build_icon_page())        # 0 Icon & SCS
+        self.stack.addWidget(self._build_asset_page())       # 1 Asset Render
+        self.stack.addWidget(self._build_settings_page())    # 2 Settings
+        self.stack.addWidget(self._build_info_page())        # 3 Info
         outer.addWidget(self.stack, 1)
 
-    # ------------------------------------------------------------------ sidebar (navigation only)
+    # ------------------------------------------------------------------ sidebar
     def _build_sidebar(self):
         sb = QFrame()
         sb.setObjectName("sidebar")
@@ -617,15 +563,16 @@ class MainWindow(QMainWindow):
         v.addLayout(brand)
         v.addSpacing(22)
 
-        sec = QLabel("MENU")
-        sec.setObjectName("section")
-        v.addWidget(sec)
-        v.addSpacing(4)
-
         self.nav_buttons = {}
-
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
+
+        def section(text):
+            s = QLabel(text)
+            s.setObjectName("section")
+            v.addSpacing(6)
+            v.addWidget(s)
+            v.addSpacing(2)
 
         def nav(key, text, icon):
             b = self._btn("  " + text, lambda: self.show_page(key), "nav", icon=icon)
@@ -637,11 +584,14 @@ class MainWindow(QMainWindow):
             v.addWidget(b)
             return b
 
-        nav("dash", "Dashboard", "dashboard")
+        section("WORKSPACES")
+        nav("icon", "Icon && SCS", "dashboard")
         nav("asset", "Asset Render", "image")
+        v.addSpacing(10)
+        section("GENERAL")
         nav("settings", "Settings", "settings")
         self.nav_info = nav("info", "Info && Update", "info")
-        self.nav_buttons["dash"].setChecked(True)
+        self.nav_buttons["icon"].setChecked(True)
         self._refresh_nav_icons()
         v.addStretch(1)
 
@@ -671,94 +621,226 @@ class MainWindow(QMainWindow):
     def _elide(text, n):
         return text if len(text) <= n else text[: n - 1] + "…"
 
-    # ------------------------------------------------------------------ project card
-    def _build_project_card(self):
-        card = Card("Project", "What to render and where to save it")
+    # ------------------------------------------------------------------ shared builders
+    def _workspace(self, title, subtitle, start_slot):
+        """Page skeleton shared by both workspaces: header (title + Start/Stop) and a body layout."""
+        page = QWidget()
+        pv = QVBoxLayout(page)
+        pv.setContentsMargins(26, 20, 26, 20)
+        pv.setSpacing(14)
+        hrow = QHBoxLayout()
+        hrow.setSpacing(10)
+        col = QVBoxLayout()
+        col.setSpacing(0)
+        h = QLabel(title)
+        h.setObjectName("h1")
+        col.addWidget(h)
+        status = QLabel(subtitle)
+        status.setObjectName("sub")
+        col.addWidget(status)
+        hrow.addLayout(col)
+        hrow.addStretch(1)
+        stop = self._btn("  Stop Now", self.stop_now, "danger", icon="stop", icon_color=RED)
+        stop.setEnabled(False)
+        start = self._btn("  Start Render", start_slot, "primary", icon="play", icon_color="#ffffff")
+        start.setMinimumWidth(170)
+        hrow.addWidget(stop)
+        hrow.addWidget(start)
+        pv.addLayout(hrow)
+        return page, pv, status, start, stop
+
+    def _stats(self, pv, specs):
+        row = QHBoxLayout()
+        row.setSpacing(14)
+        cards = []
+        for title, bg, accent, value, sub in specs:
+            c = StatCard(title, bg, accent)
+            c.set(value, sub)
+            row.addWidget(c)
+            cards.append(c)
+        pv.addLayout(row)
+        return cards
+
+    def _field(self, text):
+        l = QLabel(text)
+        l.setObjectName("fieldLabel")
+        return l
+
+    def _progress_card(self):
+        """Progress card shared by both workspaces: current item, sample bar, time, last image, log."""
+        card = Card("Progress", "Current image, last finished image and log")
+        w = {}
+        top = QHBoxLayout()
+        top.setSpacing(16)
+        info = QVBoxLayout()
+        info.setSpacing(5)
+        w["now"] = QLabel("Idle")
+        w["now"].setObjectName("nowTitle")
+        w["now"].setWordWrap(True)
+        info.addWidget(w["now"])
+        w["info"] = QLabel("Press Start Render to begin.")
+        w["info"].setObjectName("sub")
+        w["info"].setWordWrap(True)
+        info.addWidget(w["info"])
+        sr = QHBoxLayout()
+        sr.addWidget(self._field("Current image"))
+        sr.addStretch(1)
+        w["sample"] = QLabel("")
+        w["sample"].setObjectName("sub")
+        sr.addWidget(w["sample"])
+        info.addLayout(sr)
+        w["bar"] = QProgressBar()
+        w["bar"].setRange(0, 100)
+        w["bar"].setValue(0)
+        w["bar"].setFixedHeight(8)
+        info.addWidget(w["bar"])
+        w["time"] = QLabel("")
+        w["time"].setObjectName("sub")
+        w["time"].setWordWrap(True)
+        info.addWidget(w["time"])
+        info.addStretch(1)
+        top.addLayout(info, 1)
+
+        tv = QVBoxLayout()
+        tv.setSpacing(3)
+        w["img"] = QLabel("No image yet")
+        w["img"].setObjectName("thumb")
+        w["img"].setAlignment(Qt.AlignCenter)
+        w["img"].setFixedSize(170, 136)
+        w["img"].setCursor(Qt.PointingHandCursor)
+        w["img"].setToolTip("Click to open the image")
+        tv.addWidget(w["img"])
+        w["cap"] = QLabel("Last finished image")
+        w["cap"].setObjectName("sub")
+        w["cap"].setAlignment(Qt.AlignCenter)
+        w["cap"].setFixedWidth(170)
+        w["cap"].setWordWrap(True)
+        tv.addWidget(w["cap"])
+        top.addLayout(tv)
+        card.lay.addLayout(top)
+
+        lh = QHBoxLayout()
+        lh.addWidget(self._field("Log"))
+        lh.addStretch(1)
+        w["log"] = QPlainTextEdit()
+        w["log"].setObjectName("log")
+        w["log"].setReadOnly(True)
+        w["log"].setMaximumBlockCount(30000)
+        log = w["log"]
+        lh.addWidget(self._btn("Save", lambda: self.save_log(log), "pill"))
+        lh.addWidget(self._btn("Clear", log.clear, "pill"))
+        card.lay.addLayout(lh)
+        card.lay.addWidget(log, 1)
+        w["verbose"] = QCheckBox("Show Blender sample lines")
+        card.lay.addWidget(w["verbose"])
+        w["card"] = card
+        return w
+
+    # ================================================================== Icon & SCS workspace
+    def _build_icon_page(self):
+        page, pv, self.lbl_status, self.btn_render, self.btn_stop = self._workspace(
+            "Icon & SCS", "Batch render the Scs_N / Icon_N collections of a prepared .blend file.",
+            self.start_render)
+
+        self.st_total, self.st_selected, self.st_done, self.st_time = self._stats(pv, [
+            ("Images In Scene", "#eaf3ff", BLUE, "0", "Scan a scene to count"),
+            ("Will Render", "#fff3e6", ORANGE, "0", "Mode: render all"),
+            ("Rendered", "#f1edff", PURPLE, "0 / 0", "No errors"),
+            ("Elapsed Time", "#ffeef2", PINK, "00:00", "ETA --:--"),
+        ])
+
+        row1 = QHBoxLayout()
+        row1.setSpacing(14)
+        # --- source
+        src = Card("Source", "Prepared .blend file and output folder")
         g = QGridLayout()
         g.setHorizontalSpacing(8)
         g.setVerticalSpacing(10)
         g.setColumnStretch(1, 1)
-
-        lb = QLabel("Blend file")
-        lb.setObjectName("fieldLabel")
-        g.addWidget(lb, 0, 0)
+        g.addWidget(self._field("Blend file"), 0, 0)
         self.ed_blend = QLineEdit()
         self.ed_blend.setPlaceholderText("Drop your prepared .blend here or click Browse")
         g.addWidget(self.ed_blend, 0, 1)
         g.addWidget(self._btn("Browse", self.browse_blend), 0, 2)
-        self.btn_scan = self._btn("Scan", self.start_scan, tip="Read the .blend and list Scs_N / Icon_N",
-                                  icon="scan")
+        self.btn_scan = self._btn("Scan", self.start_scan, tip="Read the .blend and list Scs_N / Icon_N", icon="scan")
         g.addWidget(self.btn_scan, 0, 3)
-
-        lo = QLabel("Output folder")
-        lo.setObjectName("fieldLabel")
-        g.addWidget(lo, 1, 0)
+        g.addWidget(self._field("Output folder"), 1, 0)
         self.ed_out = QLineEdit()
         self.ed_out.setPlaceholderText("Folder for the PNG images")
         g.addWidget(self.ed_out, 1, 1)
         g.addWidget(self._btn("Browse", self.browse_out), 1, 2)
         g.addWidget(self._btn("Open", self.open_out, icon="folder"), 1, 3)
-        card.lay.addLayout(g)
+        src.lay.addLayout(g)
+        note = QLabel("Each root object in Scs_N / Icon_N → one image (children included). Setup is always "
+                      "visible; Map renders as its own image; scs_render_separate objects render last.")
+        note.setObjectName("sub")
+        note.setWordWrap(True)
+        src.lay.addWidget(note)
+        src.lay.addStretch(1)
+        row1.addWidget(src, 5)
 
-        card.lay.addSpacing(4)
-        cl = QLabel("Render settings  (change them on the Settings page)")
-        cl.setObjectName("fieldLabel")
-        card.lay.addWidget(cl)
-        self.btn_cfg = QLabel("")
-        self.btn_cfg.setObjectName("cfg")
-        self.btn_cfg.setWordWrap(True)
-        card.lay.addWidget(self.btn_cfg)
-        card.lay.addStretch(1)
-        return card
+        # --- options
+        opt = Card("Render Options", "Applied to every Scs_N / Icon_N collection")
+        g = QGridLayout()
+        g.setHorizontalSpacing(10)
+        g.setVerticalSpacing(10)
+        g.addWidget(self._field("Scs_N size"), 0, 0)
+        self.sp_scs_w = self._size_spin(DEFAULT_RES["Scs"][0])
+        self.sp_scs_h = self._size_spin(DEFAULT_RES["Scs"][1])
+        g.addWidget(self.sp_scs_w, 0, 1)
+        g.addWidget(self._x_label(), 0, 2)
+        g.addWidget(self.sp_scs_h, 0, 3)
+        g.addWidget(self._field("Icon_N size"), 1, 0)
+        self.sp_icon_w = self._size_spin(DEFAULT_RES["Icon"][0])
+        self.sp_icon_h = self._size_spin(DEFAULT_RES["Icon"][1])
+        g.addWidget(self.sp_icon_w, 1, 1)
+        g.addWidget(self._x_label(), 1, 2)
+        g.addWidget(self.sp_icon_h, 1, 3)
+        g.addWidget(self._field("Resolution scale"), 2, 0)
+        self.sp_percent = QSpinBox()
+        self.sp_percent.setRange(1, 100)
+        self.sp_percent.setValue(100)
+        self.sp_percent.setSuffix(" %")
+        self.sp_percent.setToolTip("100% = exact size. Use 10-25% for quick test renders.")
+        self.sp_percent.valueChanged.connect(self._on_size_changed)
+        g.addWidget(self.sp_percent, 2, 1)
+        g.addWidget(self._field("Start frame"), 2, 2, Qt.AlignRight)
+        self.sp_frame = QSpinBox()
+        self.sp_frame.setRange(-100000, 100000)
+        self.sp_frame.setValue(2)
+        self.sp_frame.setToolTip("Collection N renders at frame Start + (N - 1)")
+        self.sp_frame.valueChanged.connect(self._on_size_changed)
+        g.addWidget(self.sp_frame, 2, 3)
+        self.lbl_size_preview = QLabel("")
+        self.lbl_size_preview.setObjectName("sub")
+        g.addWidget(self.lbl_size_preview, 3, 1, 1, 3)
+        opt.head.addWidget(self._btn("Reset to default", self.reset_sizes, "pill",
+                                     tip="Scs 2796×2048, Icon 2048×2048, 100%, start frame 2"))
+        g.setColumnStretch(1, 1)
+        g.setColumnStretch(3, 1)
+        opt.lay.addLayout(g)
+        opt.lay.addStretch(1)
+        row1.addWidget(opt, 6)
+        pv.addLayout(row1)
 
-    # ------------------------------------------------------------------ now rendering card
-    def _build_now_card(self):
-        card = Card("Now Rendering", "Current image and last finished image")
-        h = QHBoxLayout()
-        h.setSpacing(18)
-
-        self.ring = Ring(132, 12)
-        self.ring.set_value(0, "0%", "this image")
-        h.addWidget(self.ring, 0, Qt.AlignVCenter)
-
-        info = QVBoxLayout()
-        info.setSpacing(6)
-        self.lbl_now = QLabel("Idle")
-        self.lbl_now.setObjectName("nowTitle")
-        self.lbl_now.setWordWrap(True)
-        info.addWidget(self.lbl_now)
-        self.lbl_now_info = QLabel("Press Start Render to begin.")
-        self.lbl_now_info.setObjectName("sub")
-        self.lbl_now_info.setWordWrap(True)
-        info.addWidget(self.lbl_now_info)
-        self.lbl_time = QLabel("")
-        self.lbl_time.setObjectName("sub")
-        self.lbl_time.setWordWrap(True)
-        info.addWidget(self.lbl_time)
-        info.addStretch(1)
-        h.addLayout(info, 1)
-
-        tv = QVBoxLayout()
-        tv.setSpacing(4)
-        self.img = QLabel("No image yet")
-        self.img.setObjectName("thumb")
-        self.img.setAlignment(Qt.AlignCenter)
-        self.img.setFixedSize(200, 150)
-        self.img.setCursor(Qt.PointingHandCursor)
-        self.img.setToolTip("Click to open the image")
+        row2 = QHBoxLayout()
+        row2.setSpacing(14)
+        row2.addWidget(self._build_items_card(), 11)
+        p = self._progress_card()
+        self.lbl_now, self.lbl_now_info, self.lbl_sample = p["now"], p["info"], p["sample"]
+        self.pb_item, self.lbl_time, self.img, self.lbl_img = p["bar"], p["time"], p["img"], p["cap"]
+        self.log, self.chk_verbose = p["log"], p["verbose"]
         self.img.mousePressEvent = lambda e: self.open_last_image()
-        tv.addWidget(self.img)
-        self.lbl_img = QLabel("Last finished image")
-        self.lbl_img.setObjectName("sub")
-        self.lbl_img.setAlignment(Qt.AlignCenter)
-        self.lbl_img.setFixedWidth(200)
-        tv.addWidget(self.lbl_img)
-        h.addLayout(tv)
+        row2.addWidget(p["card"], 9)
+        pv.addLayout(row2, 1)
+        return page
 
-        card.lay.addLayout(h)
-        return card
+    def _x_label(self):
+        x = QLabel("×")
+        x.setObjectName("sub")
+        x.setAlignment(Qt.AlignCenter)
+        return x
 
-    # ------------------------------------------------------------------ scene items card
     def _build_items_card(self):
         card = Card("Scene Items", "Tick the images to render")
         self.ed_search = QLineEdit()
@@ -766,13 +848,13 @@ class MainWindow(QMainWindow):
         self.ed_search.setPlaceholderText("Search...")
         self.ed_search.addAction(make_icon("search", SUB), QLineEdit.LeadingPosition)
         self.ed_search.setClearButtonEnabled(True)
-        self.ed_search.setFixedWidth(200)
+        self.ed_search.setFixedWidth(190)
         self.ed_search.textChanged.connect(self.apply_filter)
         card.head.addWidget(self.ed_search)
         self.cmb_filter = QComboBox()
         self.cmb_filter.addItems(["Show: all", "Show: Scs", "Show: Icon", "Show: Custom",
                                   "Show: maps", "Show: objects"])
-        self.cmb_filter.setFixedWidth(140)
+        self.cmb_filter.setFixedWidth(135)
         self.cmb_filter.currentIndexChanged.connect(self.apply_filter)
         card.head.addWidget(self.cmb_filter)
 
@@ -811,24 +893,10 @@ class MainWindow(QMainWindow):
         self.tree.itemDoubleClicked.connect(self._on_tree_double)
         card.lay.addWidget(self.tree, 1)
 
-        self.lbl_scene = QLabel("No scene scanned yet. Choose a .blend file in Project.")
+        self.lbl_scene = QLabel("No scene scanned yet. Choose a .blend file in Source.")
         self.lbl_scene.setObjectName("sub")
         self.lbl_scene.setWordWrap(True)
         card.lay.addWidget(self.lbl_scene)
-        return card
-
-    # ------------------------------------------------------------------ log card
-    def _build_log_card(self):
-        card = Card("Render Log", "Blender output")
-        card.head.addWidget(self._btn("Save", self.save_log, "pill"))
-        card.head.addWidget(self._btn("Clear", lambda: self.log.clear(), "pill"))
-        self.log = QPlainTextEdit()
-        self.log.setObjectName("log")
-        self.log.setReadOnly(True)
-        self.log.setMaximumBlockCount(30000)
-        card.lay.addWidget(self.log, 1)
-        self.chk_verbose = QCheckBox("Show Blender sample lines")
-        card.lay.addWidget(self.chk_verbose)
         return card
 
     # ================================================================== dialogs
@@ -877,14 +945,14 @@ class MainWindow(QMainWindow):
         return f, v
 
     def _build_settings_page(self):
-        page, outer = self._page("Settings", "Blender, render options and image size. Changes are saved automatically.")
+        page, outer = self._page("Settings", "General settings shared by Icon & SCS and Asset Render. "
+                                             "Changes are saved automatically.")
 
         f, v = self._dlg_card("Blender executable")
         row = QHBoxLayout()
         self.cmb_blender = QComboBox()
         self.cmb_blender.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.cmb_blender.setToolTip("Blender installs found automatically (registry, Program Files, Steam, PATH...)")
-        self.cmb_blender.currentIndexChanged.connect(lambda *_: self._refresh_cfg_label())
         row.addWidget(self.cmb_blender, 1)
         self.btn_find = self._btn("Detect again", self.find_blenders, icon="scan")
         row.addWidget(self.btn_find)
@@ -897,83 +965,17 @@ class MainWindow(QMainWindow):
         v.addWidget(hint)
         outer.addWidget(f)
 
-        row2 = QHBoxLayout()
-        row2.setSpacing(14)
-        outer.addLayout(row2)
-
-        f, v = self._dlg_card("Render options")
-        ro = QGridLayout()
-        ro.setHorizontalSpacing(10)
-        ro.setVerticalSpacing(8)
+        f, v = self._dlg_card("Render device")
         self.chk_gpu = QCheckBox("Force GPU rendering (Cycles)")
         self.chk_gpu.setToolTip("Tries OptiX, CUDA, HIP, Metal and oneAPI in that order")
-        self.chk_gpu.toggled.connect(lambda *_: self._refresh_cfg_label())
-        ro.addWidget(self.chk_gpu, 0, 0, 1, 3)
-        sf = QLabel("Start frame")
-        sf.setObjectName("fieldLabel")
-        ro.addWidget(sf, 1, 0)
-        self.sp_frame = QSpinBox()
-        self.sp_frame.setRange(-100000, 100000)
-        self.sp_frame.setValue(2)
-        self.sp_frame.setMinimumWidth(120)
-        self.sp_frame.valueChanged.connect(self._on_size_changed)
-        ro.addWidget(self.sp_frame, 1, 1)
-        fh = QLabel("Collection N → frame Start + (N − 1)")
-        fh.setObjectName("sub")
-        ro.addWidget(fh, 1, 2)
-        ro.setColumnStretch(2, 1)
-        v.addLayout(ro)
-        row2.addWidget(f, 1)
-
-        f, v = self._dlg_card("Image size")
-        g = QGridLayout()
-        g.setHorizontalSpacing(8)
-        g.setVerticalSpacing(8)
-        for r, (name, key) in enumerate((("Scs_N", "scs"), ("Icon_N", "icon"))):
-            lb = QLabel(name)
-            lb.setObjectName("fieldLabel")
-            g.addWidget(lb, r, 0)
-            w_ = self._size_spin(DEFAULT_RES["Scs" if key == "scs" else "Icon"][0])
-            h_ = self._size_spin(DEFAULT_RES["Scs" if key == "scs" else "Icon"][1])
-            setattr(self, f"sp_{key}_w", w_)
-            setattr(self, f"sp_{key}_h", h_)
-            g.addWidget(w_, r, 1)
-            x = QLabel("×")
-            x.setObjectName("sub")
-            g.addWidget(x, r, 2)
-            g.addWidget(h_, r, 3)
-        lp = QLabel("Resolution scale")
-        lp.setObjectName("fieldLabel")
-        g.addWidget(lp, 2, 0)
-        self.sp_percent = QSpinBox()
-        self.sp_percent.setRange(1, 100)
-        self.sp_percent.setValue(100)
-        self.sp_percent.setSuffix(" %")
-        self.sp_percent.setToolTip("100% = exact size above. Use 10-25% for quick test renders.")
-        self.sp_percent.valueChanged.connect(self._on_size_changed)
-        g.addWidget(self.sp_percent, 2, 1)
-        self.lbl_size_preview = QLabel("")
-        self.lbl_size_preview.setObjectName("sub")
-        g.addWidget(self.lbl_size_preview, 2, 2, 1, 3)
-        g.addWidget(self._btn("Reset to default", self.reset_sizes,
-                              tip="Scs 2796×2048, Icon 2048×2048, 100%"), 0, 4)
-        g.setColumnStretch(5, 1)
-        v.addLayout(g)
-        row2.addWidget(f, 1)
-
-        f, v = self._dlg_card("How rendering works")
-        rules = QLabel(
-            "•  Every root object (top-level empty / mesh) in Scs_N / Icon_N becomes one image; its children are shown with it.\n"
-            "•  The Setup collection is always visible.\n"
-            "•  Map is rendered as its own image (one per Event_ with scs_event_active) and is hidden in object images.\n"
-            "•  Objects with scs_render_separate = True are rendered last, at the scene's original frame.\n"
-            "•  Order: Scs first, then Icon, each by number. Images are saved as PNG in the output folder.")
-        rules.setObjectName("sub")
-        rules.setWordWrap(True)
-        v.addWidget(rules)
+        v.addWidget(self.chk_gpu)
+        gh = QLabel("When off, the device saved in the .blend file is used (Icon & SCS) or the CPU (Asset Render). "
+                    "The first GPU render can take a few minutes while shaders compile.")
+        gh.setObjectName("sub")
+        gh.setWordWrap(True)
+        v.addWidget(gh)
         outer.addWidget(f)
         outer.addStretch(1)
-
         return page
 
     def _build_info_page(self):
@@ -1085,76 +1087,56 @@ class MainWindow(QMainWindow):
         return name
 
     def _build_asset_page(self):
-        page = QWidget()
-        pv = QVBoxLayout(page)
-        pv.setContentsMargins(26, 20, 26, 20)
-        pv.setSpacing(16)
+        page, pv, self.a_status, self.a_btn_start, self.a_btn_stop = self._workspace(
+            "Asset Render", "Render a folder of FBX files - camera, lights and framing are set up automatically.",
+            self.asset_start)
 
-        hrow = QHBoxLayout()
-        hrow.setSpacing(10)
-        col = QVBoxLayout()
-        col.setSpacing(0)
-        h = QLabel("Asset Render")
-        h.setObjectName("h1")
-        col.addWidget(h)
-        self.a_status = QLabel("Pick a folder of FBX files - camera, lights and framing are set up automatically.")
-        self.a_status.setObjectName("sub")
-        col.addWidget(self.a_status)
-        hrow.addLayout(col)
-        hrow.addStretch(1)
-        self.a_btn_stop = self._btn("  Stop Now", self.stop_now, "danger", icon="stop", icon_color=RED)
-        self.a_btn_stop.setEnabled(False)
-        self.a_btn_start = self._btn("  Start Render", self.asset_start, "primary", icon="play", icon_color="#ffffff")
-        self.a_btn_start.setMinimumWidth(170)
-        hrow.addWidget(self.a_btn_stop)
-        hrow.addWidget(self.a_btn_start)
-        pv.addLayout(hrow)
+        self.a_st_total, self.a_st_selected, self.a_st_done, self.a_st_time = self._stats(pv, [
+            ("FBX Files", "#eaf3ff", BLUE, "0", "Choose a folder"),
+            ("Will Render", "#fff3e6", ORANGE, "0", "Ticked files"),
+            ("Rendered", "#f1edff", PURPLE, "0 / 0", "No errors"),
+            ("Elapsed Time", "#ffeef2", PINK, "00:00", "ETA --:--"),
+        ])
 
-        # ---- row 1: assets | camera & light
         row1 = QHBoxLayout()
         row1.setSpacing(14)
-
-        c1 = Card("Assets", "Folder with your FBX files")
+        # --- source
+        src = Card("Source", "FBX folder and output folder")
         g = QGridLayout()
         g.setHorizontalSpacing(8)
         g.setVerticalSpacing(10)
         g.setColumnStretch(1, 1)
-        l = QLabel("FBX folder")
-        l.setObjectName("fieldLabel")
-        g.addWidget(l, 0, 0)
+        g.addWidget(self._field("FBX folder"), 0, 0)
         self.a_ed_dir = QLineEdit()
         self.a_ed_dir.setPlaceholderText("Drop a folder here or click Browse")
         self.a_ed_dir.editingFinished.connect(self.asset_scan)
         g.addWidget(self.a_ed_dir, 0, 1)
         g.addWidget(self._btn("Browse", self.asset_browse_dir), 0, 2)
         g.addWidget(self._btn("Refresh", self.asset_scan, icon="scan"), 0, 3)
-        l = QLabel("Output folder")
-        l.setObjectName("fieldLabel")
-        g.addWidget(l, 1, 0)
+        g.addWidget(self._field("Output folder"), 1, 0)
         self.a_ed_out = QLineEdit()
         self.a_ed_out.setPlaceholderText("Folder for the PNG images")
         g.addWidget(self.a_ed_out, 1, 1)
         g.addWidget(self._btn("Browse", self.asset_browse_out), 1, 2)
         g.addWidget(self._btn("Open", self.asset_open_out, icon="folder"), 1, 3)
-        c1.lay.addLayout(g)
+        src.lay.addLayout(g)
         self.a_chk_sub = QCheckBox("Include subfolders")
         self.a_chk_sub.toggled.connect(lambda *_: self.asset_scan())
-        c1.lay.addWidget(self.a_chk_sub)
-        note = QLabel("Image name = FBX name. Everything after “-Loop” is removed "
-                      "(Boy-Loop-Idle.fbx → Boy.png). Parents are rendered together with all their children.")
+        src.lay.addWidget(self.a_chk_sub)
+        note = QLabel("Image name = FBX name, everything from “-Loop” removed (Boy-Loop-Idle.fbx → Boy.png). "
+                      "Parents are rendered together with all their children.")
         note.setObjectName("sub")
         note.setWordWrap(True)
-        c1.lay.addWidget(note)
-        c1.lay.addStretch(1)
-        row1.addWidget(c1, 5)
+        src.lay.addWidget(note)
+        src.lay.addStretch(1)
+        row1.addWidget(src, 5)
 
-        c2 = Card("Camera & Light", "Lights and framing are automatic")
+        # --- options
+        opt = Card("Render Options", "Camera, lights and framing are automatic")
         g = QGridLayout()
         g.setHorizontalSpacing(10)
         g.setVerticalSpacing(10)
-        l = QLabel("Camera angle")
-        l.setObjectName("fieldLabel")
-        g.addWidget(l, 0, 0)
+        g.addWidget(self._field("Camera angle"), 0, 0)
         vrow = QHBoxLayout()
         vrow.setSpacing(6)
         self.a_rb_34 = QRadioButton("3/4 view")
@@ -1170,81 +1152,67 @@ class MainWindow(QMainWindow):
         vrow.addStretch(1)
         g.addLayout(vrow, 0, 1, 1, 3)
 
-        l = QLabel("Camera height")
-        l.setObjectName("fieldLabel")
-        g.addWidget(l, 1, 0)
-        self.a_sp_elev = QSpinBox()
-        self.a_sp_elev.setRange(-45, 89)
-        self.a_sp_elev.setSuffix(" °")
-        self.a_sp_elev.setValue(20)
-        self.a_sp_elev.setToolTip("Angle above the asset. Default: 20° for 3/4, 8° for front.")
-        g.addWidget(self.a_sp_elev, 1, 1)
-        l = QLabel("Frame margin")
-        l.setObjectName("fieldLabel")
-        g.addWidget(l, 1, 2)
-        self.a_sp_margin = QSpinBox()
-        self.a_sp_margin.setRange(0, 40)
-        self.a_sp_margin.setSuffix(" %")
-        self.a_sp_margin.setValue(6)
-        self.a_sp_margin.setToolTip("Empty space kept around the asset")
-        g.addWidget(self.a_sp_margin, 1, 3)
-
-        l = QLabel("Image size")
-        l.setObjectName("fieldLabel")
-        g.addWidget(l, 2, 0)
+        g.addWidget(self._field("Image size"), 1, 0)
         self.a_sp_w = QSpinBox()
         self.a_sp_h = QSpinBox()
         for sp in (self.a_sp_w, self.a_sp_h):
             sp.setRange(16, 16384)
             sp.setValue(2048)
             sp.setSuffix(" px")
-        g.addWidget(self.a_sp_w, 2, 1)
-        g.addWidget(self.a_sp_h, 2, 3)
-        x = QLabel("×")
-        x.setObjectName("sub")
-        x.setAlignment(Qt.AlignCenter)
-        g.addWidget(x, 2, 2)
+        g.addWidget(self.a_sp_w, 1, 1)
+        g.addWidget(self._x_label(), 1, 2)
+        g.addWidget(self.a_sp_h, 1, 3)
 
-        l = QLabel("Engine")
-        l.setObjectName("fieldLabel")
-        g.addWidget(l, 3, 0)
+        g.addWidget(self._field("Camera height"), 2, 0)
+        self.a_sp_elev = QSpinBox()
+        self.a_sp_elev.setRange(-45, 89)
+        self.a_sp_elev.setSuffix(" °")
+        self.a_sp_elev.setValue(20)
+        self.a_sp_elev.setToolTip("Angle above the asset. Default: 20° for 3/4, 8° for front.")
+        g.addWidget(self.a_sp_elev, 2, 1)
+        g.addWidget(self._field("Margin"), 2, 2, Qt.AlignRight)
+        self.a_sp_margin = QSpinBox()
+        self.a_sp_margin.setRange(0, 40)
+        self.a_sp_margin.setSuffix(" %")
+        self.a_sp_margin.setValue(6)
+        self.a_sp_margin.setToolTip("Empty space kept around the asset")
+        g.addWidget(self.a_sp_margin, 2, 3)
+
+        g.addWidget(self._field("Engine"), 3, 0)
         self.a_cmb_engine = QComboBox()
         self.a_cmb_engine.addItems(["Cycles (best look)", "EEVEE (fastest)"])
         g.addWidget(self.a_cmb_engine, 3, 1)
-        l = QLabel("Samples")
-        l.setObjectName("fieldLabel")
-        g.addWidget(l, 3, 2)
+        g.addWidget(self._field("Samples"), 3, 2, Qt.AlignRight)
         self.a_sp_samples = QSpinBox()
         self.a_sp_samples.setRange(1, 4096)
         self.a_sp_samples.setValue(64)
         g.addWidget(self.a_sp_samples, 3, 3)
 
-        l = QLabel("Light strength")
-        l.setObjectName("fieldLabel")
-        g.addWidget(l, 4, 0)
+        g.addWidget(self._field("Light strength"), 4, 0)
         self.a_sp_light = QSpinBox()
         self.a_sp_light.setRange(10, 400)
         self.a_sp_light.setValue(100)
         self.a_sp_light.setSuffix(" %")
         g.addWidget(self.a_sp_light, 4, 1)
-        self.a_chk_transparent = QCheckBox("Transparent background")
+        chk = QHBoxLayout()
+        self.a_chk_transparent = QCheckBox("Transparent bg")
         self.a_chk_transparent.setChecked(True)
-        g.addWidget(self.a_chk_transparent, 4, 2, 1, 2)
         self.a_chk_pixel = QCheckBox("Sharp pixel textures")
         self.a_chk_pixel.setChecked(True)
         self.a_chk_pixel.setToolTip("Closest filtering, keeps voxel / pixel-art textures crisp")
-        g.addWidget(self.a_chk_pixel, 5, 2, 1, 2)
+        chk.addWidget(self.a_chk_transparent)
+        chk.addWidget(self.a_chk_pixel)
+        chk.addStretch(1)
+        g.addLayout(chk, 4, 2, 1, 2)
         g.setColumnStretch(1, 1)
         g.setColumnStretch(3, 1)
-        c2.lay.addLayout(g)
-        c2.lay.addStretch(1)
-        row1.addWidget(c2, 6)
+        opt.lay.addLayout(g)
+        opt.lay.addStretch(1)
+        row1.addWidget(opt, 6)
         pv.addLayout(row1)
 
-        # ---- row 2: files | progress
         row2 = QHBoxLayout()
         row2.setSpacing(14)
-
         c3 = Card("FBX Files", "Tick the files to render")
         tick = QLabel("Tick:")
         tick.setObjectName("sub")
@@ -1266,45 +1234,12 @@ class MainWindow(QMainWindow):
         c3.lay.addWidget(self.a_lbl_count)
         row2.addWidget(c3, 11)
 
-        c4 = Card("Progress", "Current file and last image")
-        top = QHBoxLayout()
-        top.setSpacing(14)
-        self.a_ring = Ring(116, 11)
-        self.a_ring.set_value(0, "0/0", "files")
-        top.addWidget(self.a_ring, 0, Qt.AlignVCenter)
-        info = QVBoxLayout()
-        info.setSpacing(4)
-        self.a_lbl_now = QLabel("Idle")
-        self.a_lbl_now.setObjectName("nowTitle")
-        self.a_lbl_now.setWordWrap(True)
-        info.addWidget(self.a_lbl_now)
-        self.a_lbl_time = QLabel("")
-        self.a_lbl_time.setObjectName("sub")
-        self.a_lbl_time.setWordWrap(True)
-        info.addWidget(self.a_lbl_time)
-        info.addStretch(1)
-        top.addLayout(info, 1)
-        self.a_img = QLabel("No image yet")
-        self.a_img.setObjectName("thumb")
-        self.a_img.setAlignment(Qt.AlignCenter)
-        self.a_img.setFixedSize(150, 150)
-        self.a_img.setCursor(Qt.PointingHandCursor)
+        p = self._progress_card()
+        self.a_lbl_now, self.a_lbl_info, self.a_lbl_sample = p["now"], p["info"], p["sample"]
+        self.a_bar, self.a_lbl_time, self.a_img, self.a_lbl_img = p["bar"], p["time"], p["img"], p["cap"]
+        self.a_log, self.a_chk_verbose = p["log"], p["verbose"]
         self.a_img.mousePressEvent = lambda e: self._asset_open_path(self.a_last_image)
-        top.addWidget(self.a_img)
-        c4.lay.addLayout(top)
-        lh = QHBoxLayout()
-        ll = QLabel("Log")
-        ll.setObjectName("fieldLabel")
-        lh.addWidget(ll)
-        lh.addStretch(1)
-        lh.addWidget(self._btn("Clear", lambda: self.a_log.clear(), "pill"))
-        c4.lay.addLayout(lh)
-        self.a_log = QPlainTextEdit()
-        self.a_log.setObjectName("log")
-        self.a_log.setReadOnly(True)
-        self.a_log.setMaximumBlockCount(20000)
-        c4.lay.addWidget(self.a_log, 1)
-        row2.addWidget(c4, 9)
+        row2.addWidget(p["card"], 9)
         pv.addLayout(row2, 1)
 
         self.a_items = {}
@@ -1403,7 +1338,7 @@ class MainWindow(QMainWindow):
             self.a_items[rel] = it
         self.a_tree.blockSignals(False)
         self._asset_count()
-        self.a_ring.set_value(0, f"0/{len(files)}", "files")
+        self.a_st_total.set(len(files), f"in {os.path.basename(folder.rstrip('/\\')) or folder}")
 
     def asset_check_all(self, state):
         self.a_tree.blockSignals(True)
@@ -1419,6 +1354,7 @@ class MainWindow(QMainWindow):
             on = it.checkState(0) == Qt.Checked
             it.setForeground(0, QBrush(C_ON if on else C_DIM))
         self.a_lbl_count.setText(f"{n} FBX file(s) found  ·  {c} ticked" if n else "No FBX files in this folder.")
+        self.a_st_selected.set(c, f"{n - c} skipped" if n else "Ticked files")
 
     def _asset_set_status(self, key, text, color):
         it = self.a_items.get(key)
@@ -1508,7 +1444,12 @@ class MainWindow(QMainWindow):
         self.a_finish = None
         self.a_start_time = time.time()
         self.item_start = 0
-        self.a_ring.set_value(0, f"0/{self.a_total}", "files")
+        self._asset_progress()
+        self.a_st_time.set("00:00", "ETA --:--")
+        self.a_bar.setRange(0, 100)
+        self.a_bar.setValue(0)
+        self.a_lbl_sample.setText("")
+        self.a_lbl_info.setText("The first file can take a while (Blender start-up / shader compile).")
         self.a_lbl_now.setText("Starting Blender...")
         self.a_lbl_time.setText("")
 
@@ -1540,11 +1481,18 @@ class MainWindow(QMainWindow):
             if ev == "item":
                 self.item_start = time.time()
                 self.a_lbl_now.setText(f"{d['label']}.png")
+                res = d.get("res") or ["?", "?"]
+                self.a_lbl_info.setText(f"File {d['i']} of {d['total']}   ·   {res[0]}×{res[1]}\n{d.get('collection')}")
+                self.a_bar.setRange(0, 100)
+                self.a_bar.setValue(0)
+                self.a_lbl_sample.setText("Importing...")
                 self.a_status.setText(f"Rendering {d['i']}/{d['total']}: {d.get('collection')}")
                 self._asset_set_status(d["key"], "Rendering...", C_RENDERING)
             elif ev in ("done", "error"):
                 self.a_done += 1
                 if ev == "done":
+                    self.a_bar.setValue(self.a_bar.maximum())
+                    self.a_lbl_sample.setText("Saved")
                     self.a_secs.append(d.get("sec", 0))
                     self.a_paths[d["key"]] = d.get("path")
                     self._asset_set_status(d["key"], f"Done  {d.get('sec', 0)}s", C_DONE)
@@ -1553,15 +1501,28 @@ class MainWindow(QMainWindow):
                     self.a_errors += 1
                     self._asset_set_status(d["key"], "ERROR", C_ERROR)
                     self.a_log.appendPlainText(f"!!! ERROR {d.get('key')}: {d.get('msg')}")
-                t = max(1, self.a_total)
-                self.a_ring.set_value(self.a_done / t, f"{self.a_done}/{self.a_total}", "files")
+                self._asset_progress()
             elif ev == "finish":
                 self.a_finish = d
             return
-        if self.RE_SAMPLE.search(line) or line.startswith("Fra:"):
+        m = self.RE_SAMPLE.search(line)
+        if m:
+            cur, tot = int(m.group(1)), int(m.group(2))
+            self.a_bar.setRange(0, max(1, tot))
+            self.a_bar.setValue(cur)
+            self.a_lbl_sample.setText(f"Sample {cur}/{tot}")
+            if not self.a_chk_verbose.isChecked():
+                return
+        elif line.startswith("Fra:") and not self.a_chk_verbose.isChecked():
             return
         if line.strip():
             self.a_log.appendPlainText(line)
+
+    def _asset_progress(self):
+        t = self.a_total
+        pct = int(100 * self.a_done / t) if t else 0
+        self.a_st_done.set(f"{self.a_done} / {t}",
+                           f"{pct}% complete  ·  " + (f"{self.a_errors} error(s)" if self.a_errors else "no errors"))
 
     def _asset_show(self, path):
         if not path or not os.path.isfile(path):
@@ -1573,6 +1534,7 @@ class MainWindow(QMainWindow):
         self.a_img.setPixmap(pm.scaled(self.a_img.width() - 8, self.a_img.height() - 8,
                                        Qt.KeepAspectRatio, Qt.SmoothTransformation))
         self.a_img.setToolTip(path)
+        self.a_lbl_img.setText(self._elide(os.path.basename(path), 24) + f"\n{pm.width()}×{pm.height()}")
 
     def _asset_tick(self):
         el = time.time() - self.a_start_time
@@ -1581,7 +1543,11 @@ class MainWindow(QMainWindow):
             txt += f"  ·  this file {human_time(time.time() - self.item_start)}"
         if self.a_secs:
             avg = sum(self.a_secs) / len(self.a_secs)
-            txt += f"\nAverage {avg:.1f}s per file  ·  ETA {human_time(avg * (self.a_total - self.a_done))}"
+            eta = human_time(avg * (self.a_total - self.a_done))
+            txt += f"\nAverage {avg:.1f}s per file"
+            self.a_st_time.set(human_time(el), f"ETA {eta}")
+        else:
+            self.a_st_time.set(human_time(el), "ETA --:--")
         self.a_lbl_time.setText(txt)
 
     def _asset_finished(self, code):
@@ -1602,7 +1568,10 @@ class MainWindow(QMainWindow):
             msg = f"Blender exited (code {code}) before finishing - see the log."
             self.a_lbl_now.setText("Blender exited")
         self.a_status.setText(msg)
-        self.a_lbl_time.setText(msg)
+        self.a_lbl_info.setText(msg)
+        self.a_lbl_time.setText("")
+        self.a_lbl_sample.setText("")
+        self.a_st_time.set(el, "Finished")
         self.a_log.appendPlainText("\n=== " + msg + " ===")
         if self.a_jobs_path and os.path.isfile(self.a_jobs_path):
             try:
@@ -1612,7 +1581,7 @@ class MainWindow(QMainWindow):
         self.a_jobs_path = None
 
     # ------------------------------------------------------------------ page switching
-    PAGES = {"dash": 0, "asset": 1, "settings": 2, "info": 3}
+    PAGES = {"icon": 0, "asset": 1, "settings": 2, "info": 3}
 
     def show_page(self, key):
         if self.stack.currentIndex() == self.PAGES["settings"] and key != "settings":
@@ -1645,6 +1614,7 @@ class MainWindow(QMainWindow):
         self.sp_icon_w.setValue(DEFAULT_RES["Icon"][0])
         self.sp_icon_h.setValue(DEFAULT_RES["Icon"][1])
         self.sp_percent.setValue(100)
+        self.sp_frame.setValue(2)
 
     def _on_size_changed(self, *_):
         if not hasattr(self, "sp_percent") or not hasattr(self, "sp_icon_h") or not hasattr(self, "sp_frame"):
@@ -1654,21 +1624,6 @@ class MainWindow(QMainWindow):
         iw, ih = self.res_for("Icon")
         self.lbl_size_preview.setText(f"Output: Scs {int(sw * p)}×{int(sh * p)}, Icon {int(iw * p)}×{int(ih * p)}")
         self._refresh_tree_res()
-        self._refresh_cfg_label()
-
-    def _refresh_cfg_label(self):
-        if not all(hasattr(self, a) for a in ("btn_cfg", "sp_icon_h", "chk_gpu", "sp_frame")):
-            return
-        txt = self.cmb_blender.currentText()
-        short = txt.split("  -  ")[0] if "  -  " in txt else (os.path.basename(txt) if txt else "")
-        if not self.blender_exe():
-            short = "No blender.exe selected"
-        sw, sh = self.res_for("Scs")
-        iw, ih = self.res_for("Icon")
-        pct = self.sp_percent.value()
-        gpu = "GPU" if self.chk_gpu.isChecked() else "Scene device"
-        self.btn_cfg.setText(f"⚙  {short}  ·  {gpu}  ·  Start frame {self.sp_frame.value()}\n"
-                             f"     Scs {sw}×{sh}  ·  Icon {iw}×{ih}" + (f"  ·  Scale {pct}%" if pct != 100 else ""))
 
     def _refresh_tree_res(self):
         if not hasattr(self, "tree"):
@@ -1739,13 +1694,14 @@ class MainWindow(QMainWindow):
     def write_log(self, text):
         (self.a_log if self.proc_mode == "asset" else self.log).appendPlainText(text)
 
-    def save_log(self):
+    def save_log(self, log=None):
+        log = log or self.log
         path, _ = QFileDialog.getSaveFileName(
             self, "Save log", os.path.join(self.ed_out.text() or APP_DIR,
                                            f"render_log_{time.strftime('%Y%m%d_%H%M%S')}.txt"), "Text (*.txt)")
         if path:
             with open(path, "w", encoding="utf-8") as f:
-                f.write(self.log.toPlainText())
+                f.write(log.toPlainText())
 
     # ------------------------------------------------------------------ blender exe
     def blender_exe(self):
@@ -1758,12 +1714,10 @@ class MainWindow(QMainWindow):
                     self.cmb_blender.setItemText(i, label)
                 if select:
                     self.cmb_blender.setCurrentIndex(i)
-                self._refresh_cfg_label()
                 return
         self.cmb_blender.addItem(label or path, path)
         if select:
             self.cmb_blender.setCurrentIndex(self.cmb_blender.count() - 1)
-        self._refresh_cfg_label()
 
     def find_blenders(self):
         self.btn_find.setEnabled(False)
@@ -1927,7 +1881,9 @@ class MainWindow(QMainWindow):
         m = self.RE_SAMPLE.search(line)
         if m:
             cur, tot = int(m.group(1)), int(m.group(2))
-            self.ring.set_value(cur / max(1, tot), f"{int(100 * cur / max(1, tot))}%", f"sample {cur}/{tot}")
+            self.pb_item.setRange(0, max(1, tot))
+            self.pb_item.setValue(cur)
+            self.lbl_sample.setText(f"Sample {cur}/{tot}")
             r = self.RE_REMAIN.search(line)
             self.item_remaining = r.group(1) if r else ""
             if not self.chk_verbose.isChecked():
@@ -1945,7 +1901,9 @@ class MainWindow(QMainWindow):
         elif ev == "item":
             self.item_start = time.time()
             self.item_remaining = ""
-            self.ring.set_value(0, "0%", "preparing")
+            self.pb_item.setRange(0, 100)
+            self.pb_item.setValue(0)
+            self.lbl_sample.setText("Preparing...")
             self.lbl_now.setText(f"{d['collection']}  ›  {d['label']}")
             res = d.get("res") or ["?", "?"]
             self.lbl_now_info.setText(f"Image {d['i']} of {d['total']}   ·   {res[0]}×{res[1]}   ·   "
@@ -1955,7 +1913,8 @@ class MainWindow(QMainWindow):
         elif ev == "done":
             self.done_count += 1
             self.done_secs.append(d.get("sec", 0))
-            self.ring.set_value(1, "100%", "saved")
+            self.pb_item.setValue(self.pb_item.maximum())
+            self.lbl_sample.setText("Saved")
             self._mark_item(d["key"], f"Done  {d.get('sec', 0)}s", C_DONE)
             self.last_paths[d["key"]] = d.get("path")
             self.show_image(d.get("path"))
@@ -2303,7 +2262,9 @@ class MainWindow(QMainWindow):
         self.item_start = 0
         self.render_start = time.time()
         self._update_progress()
-        self.ring.set_value(0, "0%", "this image")
+        self.pb_item.setRange(0, 100)
+        self.pb_item.setValue(0)
+        self.lbl_sample.setText("")
         self.st_time.set("00:00", "ETA --:--")
         self.lbl_now.setText("Starting Blender...")
         self.lbl_now_info.setText("The first image can take a few minutes (shader compile / loading the scene).")
@@ -2335,7 +2296,7 @@ class MainWindow(QMainWindow):
         self.last_image = path
         self.img.setPixmap(pm.scaled(self.img.width() - 8, self.img.height() - 8,
                                      Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        self.lbl_img.setText(self._elide(os.path.basename(path), 26) + f"  ·  {pm.width()}×{pm.height()}")
+        self.lbl_img.setText(self._elide(os.path.basename(path), 24) + f"\n{pm.width()}×{pm.height()}")
         self.lbl_img.setToolTip(path)
 
     def open_last_image(self):

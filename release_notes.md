@@ -1,9 +1,7 @@
-**Render Batch v1.2.0** — new Asset Render page
+**Render Batch v1.3.0** — two workspaces, one layout
 
-- New **Asset Render** page in the sidebar: choose a folder of **FBX** files and the app sets up everything and renders them for you.
-- Camera **3/4 view** or **Front view** (adjustable height). The camera automatically fits every asset inside the frame with a margin you choose, nothing gets cropped.
-- Automatic lighting (key / fill / rim + ambient) for bright, vivid icons; adjustable light strength.
-- Parents are rendered together with all their children. Animated files (e.g. *-Loop-Idle*) are posed at their first frame.
-- Image name = FBX name; everything from "-Loop" is removed: `Boy-Loop-Idle.fbx` → `Boy.png`.
-- Transparent background, sharp pixel textures, image size, frame margin, Cycles / EEVEE and samples are all adjustable.
-- Tick which FBX files to render; ticks are remembered per folder. Drag a folder onto the page to load it.
+- The sidebar is now split into **Workspaces** (**Icon & SCS**, **Asset Render**) and **General** (**Settings**, **Info & Update**).
+- Both workspaces use the same layout: Start / Stop in the header, 4 stat cards, **Source** + **Render Options**, the list to tick and a **Progress** card with the last image and the log.
+- Icon & SCS options (image size for Scs / Icon, resolution scale, start frame) moved from Settings into the Icon & SCS page, next to the work they affect.
+- **Settings** now only holds what both workspaces share: Blender executable and GPU rendering.
+- Asset Render shows the current file, sample progress and ETA like Icon & SCS.

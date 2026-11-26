@@ -13,14 +13,18 @@ Created by **Hari**.
 3. Run **`run.bat`**. The first run installs PySide6 automatically.
 4. Optional: run `Create_Desktop_Shortcut.bat` to create a Desktop shortcut (with the app icon).
 
-## Features
+## Layout
 
-- Dashboard UI: stat cards, live progress ring, scene item counts (Scs / Icon / Custom), recent renders.
-- **Settings** popup: Blender executable (auto-detected from registry, Program Files, all Steam libraries, PATH...), GPU rendering, start frame, image size for Scs_N / Icon_N and resolution scale.
-- **Info** popup: about the app and **Update** (checks GitHub Releases, optional check on start-up, previous files backed up to `_backup_update/`).
-- Drag & drop a `.blend` onto the window to load and scan it.
-- Scene items with check boxes, search and filter; render **all** or **checked only** (check state remembered per .blend).
-- **Stop Now** kills Blender immediately. Full render log, saveable to a file.
+The sidebar has two **workspaces** and a **general** section:
+
+| Section | What it does |
+|---|---|
+| **Icon & SCS** | Batch renders the `Scs_N` / `Icon_N` collections of a prepared .blend. Options: image size for Scs / Icon, resolution scale, start frame. |
+| **Asset Render** | Renders a folder of FBX files with automatic camera, lights and framing. |
+| **Settings** | Shared by both workspaces: Blender executable (auto-detected) and GPU rendering. |
+| **Info & Update** | About the app (created by Hari) and updates from GitHub Releases. |
+
+Both workspaces share the same layout: header with **Start Render / Stop Now**, four stat cards (found, will render, rendered, elapsed / ETA), **Source** + **Render Options** cards, then the list of items to tick and a **Progress** card (current image, last finished image, log).
 
 ## Asset Render
 
