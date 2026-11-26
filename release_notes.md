@@ -1,7 +1,8 @@
-**Render Batch v1.3.0** — two workspaces, one layout
+**Render Batch v1.3.1** — skin renders
 
-- The sidebar is now split into **Workspaces** (**Icon & SCS**, **Asset Render**) and **General** (**Settings**, **Info & Update**).
-- Both workspaces use the same layout: Start / Stop in the header, 4 stat cards, **Source** + **Render Options**, the list to tick and a **Progress** card with the last image and the log.
-- Icon & SCS options (image size for Scs / Icon, resolution scale, start frame) moved from Settings into the Icon & SCS page, next to the work they affect.
-- **Settings** now only holds what both workspaces share: Blender executable and GPU rendering.
-- Asset Render shows the current file, sample progress and ETA like Icon & SCS.
+- Asset Render now knows the difference between **skins** (characters) and **objects** (eggs, blocks, items).
+- **Asset type: Auto** (default) - an FBX with a rig (armature) or "-Loop" in its name is rendered as a skin.
+- Skins: camera at eye level like a character portrait (Front 4°, 3/4 turned 22° at 6°), soft frontal light, smooth textures (no pixelation on clothes and faces).
+- Objects keep the previous look: camera a bit from above (Front 8°, 3/4 turned 35° at 20°), sharp pixel textures.
+- **Camera height** now defaults to **Auto** (the right angle for each type); set a number to override it.
+- You can force Object or Skin for the whole folder with the Asset type option.

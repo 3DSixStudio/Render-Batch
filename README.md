@@ -31,7 +31,8 @@ Both workspaces share the same layout: header with **Start Render / Stop Now**, 
 Point the app at a folder of **FBX** files and it renders one PNG per file, no scene setup needed:
 
 - Each FBX is imported into an empty studio scene (cameras / lights inside the FBX are ignored).
-- Camera: **3/4 view** or **Front view**, adjustable height; the camera is moved so the whole asset fits the frame with the chosen margin (never cropped).
+- Camera: **3/4 view** or **Front view**; the camera is moved so the whole asset fits the frame with the chosen margin (never cropped).
+- **Asset type** (Auto by default): files with a rig (armature) or `-Loop` in the name are **skins** - camera at eye level (front 4°, 3/4 turned 22° at 6°), soft frontal light, smooth textures. Everything else is an **object** - camera a bit from above (front 8°, 3/4 turned 35° at 20°), sharp pixel textures. Camera height can be overridden.
 - Lights: automatic key / fill / rim sun lights + soft ambient, "Standard" colour so colours stay vivid. Light strength is adjustable.
 - Parents are rendered together with all their children (everything in the FBX). Animated FBX files are posed at their first frame.
 - Image name = FBX name, with everything from `-Loop` removed: `Boy-Loop-Idle.fbx` → `Boy.png`. Duplicate names get `_2`, `_3`…

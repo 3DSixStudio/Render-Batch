@@ -1148,9 +1148,15 @@ class MainWindow(QMainWindow):
             self.a_view_group.addButton(rb)
             vrow.addWidget(rb)
         self.a_rb_34.setChecked(True)
-        self.a_rb_34.toggled.connect(self._asset_view_changed)
         vrow.addStretch(1)
-        g.addLayout(vrow, 0, 1, 1, 3)
+        g.addLayout(vrow, 0, 1)
+        g.addWidget(self._field("Asset type"), 0, 2, Qt.AlignRight)
+        self.a_cmb_kind = QComboBox()
+        self.a_cmb_kind.addItems(["Auto", "Object / prop", "Skin / character"])
+        self.a_cmb_kind.setToolTip("Auto: a file with a rig (armature) or '-Loop' in its name is treated as a skin.\n"
+                                   "Object: camera a bit from above, sharp pixel textures (eggs, blocks...).\n"
+                                   "Skin: camera at eye level, gentle 3/4 turn, soft light, smooth textures.")
+        g.addWidget(self.a_cmb_kind, 0, 3)
 
         g.addWidget(self._field("Image size"), 1, 0)
         self.a_sp_w = QSpinBox()
@@ -1165,10 +1171,12 @@ class MainWindow(QMainWindow):
 
         g.addWidget(self._field("Camera height"), 2, 0)
         self.a_sp_elev = QSpinBox()
-        self.a_sp_elev.setRange(-45, 89)
+        self.a_sp_elev.setRange(-46, 89)
         self.a_sp_elev.setSuffix(" °")
-        self.a_sp_elev.setValue(20)
-        self.a_sp_elev.setToolTip("Angle above the asset. Default: 20° for 3/4, 8° for front.")
+        self.a_sp_elev.setSpecialValueText("Auto")
+        self.a_sp_elev.setValue(-46)
+        self.a_sp_elev.setToolTip("Angle of the camera above the asset.\n"
+                                  "Auto: objects 20° (3/4) / 8° (front), skins 6° (3/4) / 4° (front).")
         g.addWidget(self.a_sp_elev, 2, 1)
         g.addWidget(self._field("Margin"), 2, 2, Qt.AlignRight)
         self.a_sp_margin = QSpinBox()
@@ -1199,7 +1207,8 @@ class MainWindow(QMainWindow):
         self.a_chk_transparent.setChecked(True)
         self.a_chk_pixel = QCheckBox("Sharp pixel textures")
         self.a_chk_pixel.setChecked(True)
-        self.a_chk_pixel.setToolTip("Closest filtering, keeps voxel / pixel-art textures crisp")
+        self.a_chk_pixel.setToolTip("Closest filtering, keeps voxel / pixel-art textures crisp.\n"
+                                    "Only used for objects - skins always keep smooth textures.")
         chk.addWidget(self.a_chk_transparent)
         chk.addWidget(self.a_chk_pixel)
         chk.addStretch(1)
@@ -1255,9 +1264,6 @@ class MainWindow(QMainWindow):
         return page
 
     # ---- asset helpers
-    def _asset_view_changed(self, *_):
-        self.a_sp_elev.setValue(20 if self.a_rb_34.isChecked() else 8)
-
     def asset_browse_dir(self):
         d = QFileDialog.getExistingDirectory(self, "Select FBX folder", self.a_ed_dir.text())
         if d:
@@ -1373,7 +1379,8 @@ class MainWindow(QMainWindow):
         self.a_chk_sub.setChecked(s.get("asset_subfolders", False))
         self.a_chk_sub.blockSignals(False)
         (self.a_rb_front if s.get("asset_view") == "front" else self.a_rb_34).setChecked(True)
-        self.a_sp_elev.setValue(int(s.get("asset_elevation", 20 if s.get("asset_view") != "front" else 8)))
+        self.a_sp_elev.setValue(int(s.get("asset_camera_height", -46)))
+        self.a_cmb_kind.setCurrentIndex({"object": 1, "skin": 2}.get(s.get("asset_kind"), 0))
         self.a_sp_margin.setValue(int(s.get("asset_margin", 6)))
         self.a_sp_w.setValue(int(s.get("asset_w", 2048)))
         self.a_sp_h.setValue(int(s.get("asset_h", 2048)))
@@ -1391,7 +1398,8 @@ class MainWindow(QMainWindow):
         s["asset_out"] = self.a_ed_out.text().strip().strip('"')
         s["asset_subfolders"] = self.a_chk_sub.isChecked()
         s["asset_view"] = "front" if self.a_rb_front.isChecked() else "three_quarter"
-        s["asset_elevation"] = self.a_sp_elev.value()
+        s["asset_camera_height"] = self.a_sp_elev.value()
+        s["asset_kind"] = ["auto", "object", "skin"][self.a_cmb_kind.currentIndex()]
         s["asset_margin"] = self.a_sp_margin.value()
         s["asset_w"] = self.a_sp_w.value()
         s["asset_h"] = self.a_sp_h.value()
@@ -1456,12 +1464,14 @@ class MainWindow(QMainWindow):
         args = ["--background", "--python", ASSET_CORE, "--python-exit-code", "1", "--",
                 "--jobs", self.a_jobs_path, "--output", out,
                 "--view", "front" if self.a_rb_front.isChecked() else "three_quarter",
-                "--elevation", str(self.a_sp_elev.value()),
+                "--kind", ["auto", "object", "skin"][self.a_cmb_kind.currentIndex()],
                 "--margin", str(self.a_sp_margin.value()),
                 "--width", str(self.a_sp_w.value()), "--height", str(self.a_sp_h.value()),
                 "--engine", "eevee" if self.a_cmb_engine.currentIndex() == 1 else "cycles",
                 "--samples", str(self.a_sp_samples.value()),
                 "--light", f"{self.a_sp_light.value() / 100.0:.2f}"]
+        if self.a_sp_elev.value() != self.a_sp_elev.minimum():
+            args += ["--elevation", str(self.a_sp_elev.value())]
         if not self.a_chk_transparent.isChecked():
             args.append("--opaque")
         if not self.a_chk_pixel.isChecked():

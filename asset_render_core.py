@@ -34,10 +34,24 @@ print = functools.partial(print, flush=True)
 STUDIO_PREFIX = "RB_"
 RENDERABLE = {'MESH', 'CURVE', 'SURFACE', 'META', 'FONT', 'CURVES', 'POINTCLOUD', 'VOLUME'}
 
+# azimuth: degrees around Z, 0 = looking from the front (-Y) ; negative = camera on the left
 VIEWS = {
-    # azimuth: degrees around Z, 0 = looking from the front (-Y) ; negative = camera on the left
-    "three_quarter": {"azimuth": -35.0, "elevation": 20.0},
-    "front": {"azimuth": 0.0, "elevation": 8.0},
+    # props / blocks (eggs, items): seen a bit from above
+    "object": {
+        "three_quarter": {"azimuth": -35.0, "elevation": 20.0},
+        "front": {"azimuth": 0.0, "elevation": 8.0},
+    },
+    # characters / skins: camera almost at eye level, gentle 3/4 turn
+    "skin": {
+        "three_quarter": {"azimuth": -22.0, "elevation": 6.0},
+        "front": {"azimuth": 0.0, "elevation": 4.0},
+    },
+}
+
+# (key, fill, rim, world) energies per asset kind
+LIGHTS = {
+    "object": {"Key": 2.6, "Fill": 0.55, "Rim": 1.4, "World": 0.45},
+    "skin": {"Key": 2.2, "Fill": 0.9, "Rim": 0.9, "World": 0.6},
 }
 
 
@@ -52,7 +66,9 @@ def parse_args():
     p = argparse.ArgumentParser(description="Render Batch - Asset Render")
     p.add_argument("--jobs", required=True)
     p.add_argument("--output", required=True)
-    p.add_argument("--view", default="three_quarter", choices=list(VIEWS.keys()))
+    p.add_argument("--view", default="three_quarter", choices=["three_quarter", "front"])
+    p.add_argument("--kind", default="auto", choices=["auto", "object", "skin"],
+                   help="auto: skin if the FBX has an armature or '-Loop' in its name")
     p.add_argument("--elevation", type=float, default=None, help="override camera elevation (deg)")
     p.add_argument("--margin", type=float, default=6.0, help="empty border around the asset, % of frame")
     p.add_argument("--width", type=int, default=2048)
@@ -204,10 +220,34 @@ def aim_sun(obj, from_dir):
     obj.rotation_euler = from_dir.to_track_quat('Z', 'Y').to_euler()
 
 
-def place_lights(lights, cam_az, cam_el):
-    aim_sun(lights["Key"], direction(cam_az + 40.0, max(cam_el + 35.0, 45.0)))
-    aim_sun(lights["Fill"], direction(cam_az - 70.0, 15.0))
-    aim_sun(lights["Rim"], direction(cam_az + 160.0, 50.0))
+def place_lights(lights, cam_az, cam_el, kind="object", mult=1.0):
+    if kind == "skin":
+        # soft, mostly frontal light like a studio portrait
+        aim_sun(lights["Key"], direction(cam_az + 30.0, 40.0))
+        aim_sun(lights["Fill"], direction(cam_az - 55.0, 12.0))
+        aim_sun(lights["Rim"], direction(cam_az + 170.0, 45.0))
+    else:
+        aim_sun(lights["Key"], direction(cam_az + 40.0, max(cam_el + 35.0, 45.0)))
+        aim_sun(lights["Fill"], direction(cam_az - 70.0, 15.0))
+        aim_sun(lights["Rim"], direction(cam_az + 160.0, 50.0))
+    e = LIGHTS[kind]
+    for name in ("Key", "Fill", "Rim"):
+        lights[name].data.energy = e[name] * mult
+    world = bpy.context.scene.world
+    if world and world.node_tree:
+        bg = world.node_tree.nodes.get("Background")
+        if bg:
+            bg.inputs[1].default_value = e["World"] * mult
+
+
+def detect_kind(path, objects, forced):
+    if forced in ("object", "skin"):
+        return forced
+    if "-loop" in os.path.basename(path).lower():
+        return "skin"
+    if any(o.type == 'ARMATURE' for o in objects):
+        return "skin"
+    return "object"
 
 
 # ---------------------------------------------------------------------------
@@ -374,19 +414,14 @@ def main():
     out_dir = os.path.abspath(args.output)
     os.makedirs(out_dir, exist_ok=True)
 
-    view = dict(VIEWS[args.view])
-    if args.elevation is not None:
-        view["elevation"] = args.elevation
-
     clean_scene()
     cam, lights = setup_scene(args)
-    place_lights(lights, view["azimuth"], view["elevation"])
     scene = bpy.context.scene
     aspect = args.width / float(args.height)
 
     total = len(jobs)
-    print(f"=== Asset Render: {total} file(s) | view {args.view} | {args.width}x{args.height} | "
-          f"engine {scene.render.engine} ===")
+    print(f"=== Asset Render: {total} file(s) | view {args.view} | type {args.kind} | "
+          f"{args.width}x{args.height} | engine {scene.render.engine} ===")
     mark("total", total=total)
 
     ok = fail = 0
@@ -402,15 +437,22 @@ def main():
             objs = import_fbx(job["path"])
             if not objs:
                 raise RuntimeError("Nothing was imported from this FBX.")
+            kind = detect_kind(job["path"], objs, args.kind)
+            view = dict(VIEWS[kind][args.view])
+            if args.elevation is not None:
+                view["elevation"] = args.elevation
+            place_lights(lights, view["azimuth"], view["elevation"], kind, args.light)
             frame = pose_frame(objs)
             scene.frame_set(frame)
-            pixel_textures(objs, args.smooth_textures)
+            # skins use smooth (linear) textures; sharp pixels are for voxel props
+            pixel_textures(objs, args.smooth_textures or kind == "skin")
             pts = world_points(objs)
             if not pts:
                 raise RuntimeError("The FBX has no renderable geometry.")
             dist = fit_camera(cam, pts, view, args.margin, aspect)
             n_mesh = sum(1 for o in objs if o.type in RENDERABLE)
-            print(f"    {len(objs)} object(s), {n_mesh} renderable, frame {frame}, camera distance {dist:.3f}")
+            print(f"    {kind}: {len(objs)} object(s), {n_mesh} renderable, frame {frame}, "
+                  f"camera {view['azimuth']:.0f}°/{view['elevation']:.0f}°, distance {dist:.3f}")
             scene.render.filepath = out_path
             bpy.ops.render.render(write_still=True)
             sec = time.time() - start
