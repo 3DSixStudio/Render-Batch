@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+.installed_version.json
+_backup_update/
