@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QLineEdit, QPushButton, QComboBox, QFileDialog, QGroupBox, QCheckBox, QRadioButton,
     QButtonGroup, QSpinBox, QTreeWidget, QTreeWidgetItem, QPlainTextEdit, QProgressBar,
-    QSplitter, QMessageBox, QHeaderView, QSizePolicy, QFrame,
+    QSplitter, QMessageBox, QHeaderView, QSizePolicy, QFrame, QDialog, QDialogButtonBox,
 )
 
 import blender_finder
@@ -28,6 +28,8 @@ import updater
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CORE_SCRIPT = os.path.join(APP_DIR, "scs_render_core.py")
 APP_NAME = "SCS Batch Render"
+APP_AUTHOR = "Hari"
+DEFAULT_RES = {"Scs": (2796, 2048), "Icon": (2048, 2048)}
 
 
 def read_version():
@@ -82,6 +84,15 @@ QLabel#now { font-size:13pt; font-weight:bold; color:#f0c050; }
 QLabel#title { font-size:14pt; font-weight:bold; color:#8fc1ff; }
 QLabel#dim { color:#8a8f98; }
 QSplitter::handle { background:#2b2f36; }
+QDialog { background:#23262b; }
+QFrame#hline { background:#3a3f47; border:none; }
+QPushButton#toolbar { background:transparent; border:1px solid transparent; border-radius:4px;
+    padding:5px 14px; font-weight:bold; color:#dfe3e8; }
+QPushButton#toolbar:hover { background:#353a42; border-color:#454b55; }
+QPushButton#toolbar:pressed { background:#2b2f36; }
+QPushButton#cfg { background:transparent; border:none; color:#8a8f98; padding:2px 4px; }
+QPushButton#cfg:hover { color:#8fc1ff; }
+QLabel#author { font-size:13pt; font-weight:bold; color:#f0c050; }
 
 /* ---- O tich / radio: to, vien ro, tich = nen xanh + dau check trang ---- */
 QCheckBox, QRadioButton { spacing:8px; }
@@ -244,37 +255,33 @@ class MainWindow(QMainWindow):
         main = QVBoxLayout(root)
         main.setContentsMargins(10, 8, 10, 8)
 
-        # --- header
-        head = QHBoxLayout()
-        t = QLabel(f"SCS BATCH RENDER")
+        # --- thanh cong cu ngang (tren cung ben trai): Setting | Info
+        bar = QHBoxLayout()
+        bar.setSpacing(2)
+        self.btn_setting = self._btn("⚙  Setting", self.open_settings, "toolbar", "Blender.exe, size ảnh")
+        self.btn_info = self._btn("ⓘ  Info", self.open_info, "toolbar", "Thông tin app & Update")
+        bar.addWidget(self.btn_setting)
+        bar.addWidget(self.btn_info)
+        bar.addStretch(1)
+        t = QLabel("SCS BATCH RENDER")
         t.setObjectName("title")
-        head.addWidget(t)
+        bar.addWidget(t)
         self.lbl_ver = QLabel(f"v{APP_VERSION}")
         self.lbl_ver.setObjectName("dim")
-        head.addWidget(self.lbl_ver)
-        head.addStretch(1)
-        self.chk_auto_update = QCheckBox("Tự kiểm tra update khi mở")
-        head.addWidget(self.chk_auto_update)
-        self.btn_update = self._btn("⟳  Update online", lambda: self.check_update(silent=False), "update",
-                                    f"Kiểm tra & cập nhật từ {updater.RELEASES_URL}")
-        head.addWidget(self.btn_update)
-        main.addLayout(head)
+        bar.addWidget(self.lbl_ver)
+        main.addLayout(bar)
+        line = QFrame()
+        line.setObjectName("hline")
+        line.setFixedHeight(1)
+        main.addWidget(line)
+
+        self._build_settings_dialog()
+        self._build_info_dialog()
 
         # --- paths
         g = QGroupBox("Đường dẫn")
         grid = QGridLayout(g)
         grid.setColumnStretch(1, 1)
-
-        grid.addWidget(QLabel("Blender.exe:"), 0, 0)
-        self.cmb_blender = QComboBox()
-        self.cmb_blender.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.cmb_blender.setToolTip("Tự động dò các bản Blender trong máy (registry, Program Files, Steam, PATH...)")
-        grid.addWidget(self.cmb_blender, 0, 1)
-        row = QHBoxLayout()
-        self.btn_find = self._btn("Dò lại", self.find_blenders)
-        row.addWidget(self.btn_find)
-        row.addWidget(self._btn("Chọn...", self.browse_blender))
-        grid.addLayout(row, 0, 2)
 
         grid.addWidget(QLabel("File .blend:"), 1, 0)
         self.ed_blend = QLineEdit()
@@ -305,15 +312,9 @@ class MainWindow(QMainWindow):
         self.sp_frame.setValue(2)
         self.sp_frame.setToolTip("Frame của collection số N = Start + (N-1)")
         opt.addWidget(self.sp_frame)
-        opt.addSpacing(20)
-        opt.addWidget(QLabel("Độ phân giải:"))
-        self.sp_percent = QSpinBox()
-        self.sp_percent.setRange(1, 100)
-        self.sp_percent.setValue(100)
-        self.sp_percent.setSuffix(" %")
-        self.sp_percent.setToolTip("100% = full (2796×2048 / 2048×2048). Đặt 10-25% để render thử nhanh.")
-        opt.addWidget(self.sp_percent)
         opt.addStretch(1)
+        self.btn_cfg = self._btn("", self.open_settings, "cfg", "Bấm để mở ⚙ Setting")
+        opt.addWidget(self.btn_cfg)
         grid.addLayout(opt, 3, 0, 1, 3)
         main.addWidget(g)
 
@@ -442,6 +443,207 @@ class MainWindow(QMainWindow):
 
         self.last_image = None
 
+    # ------------------------------------------------------------------ popups
+    def _size_spin(self, val):
+        sp = QSpinBox()
+        sp.setRange(16, 16384)
+        sp.setSingleStep(2)
+        sp.setValue(val)
+        sp.setSuffix(" px")
+        sp.setMinimumWidth(110)
+        sp.valueChanged.connect(self._on_size_changed)
+        return sp
+
+    def _build_settings_dialog(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("⚙  Setting")
+        dlg.setMinimumWidth(720)
+        v = QVBoxLayout(dlg)
+        v.setSpacing(10)
+
+        gb = QGroupBox("Blender.exe")
+        gl = QGridLayout(gb)
+        gl.setColumnStretch(0, 1)
+        self.cmb_blender = QComboBox()
+        self.cmb_blender.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.cmb_blender.setToolTip("Tự động dò các bản Blender trong máy (registry, Program Files, Steam, PATH...)")
+        self.cmb_blender.currentIndexChanged.connect(lambda *_: self._refresh_cfg_label())
+        gl.addWidget(self.cmb_blender, 0, 0)
+        self.btn_find = self._btn("Dò lại", self.find_blenders)
+        gl.addWidget(self.btn_find, 0, 1)
+        gl.addWidget(self._btn("Chọn...", self.browse_blender), 0, 2)
+        hint = QLabel("App tự dò Blender trong máy (registry, Program Files, Steam, PATH...). "
+                      "Danh sách xếp bản mới nhất lên đầu; bấm Chọn... nếu không thấy bản bạn cần.")
+        hint.setObjectName("dim")
+        hint.setWordWrap(True)
+        gl.addWidget(hint, 1, 0, 1, 3)
+        v.addWidget(gb)
+
+        gs = QGroupBox("Size ảnh xuất ra")
+        g = QGridLayout(gs)
+        g.addWidget(QLabel("Scs_N:"), 0, 0)
+        self.sp_scs_w = self._size_spin(DEFAULT_RES["Scs"][0])
+        self.sp_scs_h = self._size_spin(DEFAULT_RES["Scs"][1])
+        g.addWidget(self.sp_scs_w, 0, 1)
+        g.addWidget(QLabel("×"), 0, 2)
+        g.addWidget(self.sp_scs_h, 0, 3)
+        g.addWidget(QLabel("Icon_N:"), 1, 0)
+        self.sp_icon_w = self._size_spin(DEFAULT_RES["Icon"][0])
+        self.sp_icon_h = self._size_spin(DEFAULT_RES["Icon"][1])
+        g.addWidget(self.sp_icon_w, 1, 1)
+        g.addWidget(QLabel("×"), 1, 2)
+        g.addWidget(self.sp_icon_h, 1, 3)
+        g.addWidget(QLabel("Độ phân giải:"), 2, 0)
+        self.sp_percent = QSpinBox()
+        self.sp_percent.setRange(1, 100)
+        self.sp_percent.setValue(100)
+        self.sp_percent.setSuffix(" %")
+        self.sp_percent.setToolTip("100% = đúng size ở trên. Đặt 10-25% để render thử nhanh.")
+        self.sp_percent.valueChanged.connect(self._on_size_changed)
+        g.addWidget(self.sp_percent, 2, 1)
+        self.lbl_size_preview = QLabel("")
+        self.lbl_size_preview.setObjectName("dim")
+        g.addWidget(self.lbl_size_preview, 2, 2, 1, 3)
+        g.addWidget(self._btn("Về mặc định", self.reset_sizes, tip="Scs 2796×2048, Icon 2048×2048, 100%"), 0, 4)
+        g.setColumnStretch(5, 1)
+        v.addWidget(gs)
+
+        v.addStretch(1)
+        bb = QDialogButtonBox(QDialogButtonBox.Close)
+        bb.button(QDialogButtonBox.Close).setText("Đóng")
+        bb.rejected.connect(dlg.close)
+        v.addWidget(bb)
+        dlg.finished.connect(lambda *_: save_settings(self._collect_settings()))
+        self.dlg_settings = dlg
+
+    def _build_info_dialog(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("ⓘ  Info")
+        dlg.setMinimumWidth(480)
+        v = QVBoxLayout(dlg)
+        v.setSpacing(8)
+
+        t = QLabel("SCS BATCH RENDER")
+        t.setObjectName("title")
+        t.setAlignment(Qt.AlignCenter)
+        v.addWidget(t)
+        ver = QLabel(f"Phiên bản v{APP_VERSION}")
+        ver.setObjectName("dim")
+        ver.setAlignment(Qt.AlignCenter)
+        v.addWidget(ver)
+
+        gi = QGroupBox("Thông tin")
+        gl = QGridLayout(gi)
+        gl.setColumnStretch(1, 1)
+        gl.addWidget(QLabel("Người làm app:"), 0, 0)
+        au = QLabel(APP_AUTHOR)
+        au.setObjectName("author")
+        gl.addWidget(au, 0, 1)
+        gl.addWidget(QLabel("Chức năng:"), 1, 0)
+        desc = QLabel("Render hàng loạt ảnh Icon / SCS (Scs_N, Icon_N, Map, Custom) "
+                      "từ file Blender đã setup, chạy Blender ở chế độ nền.")
+        desc.setWordWrap(True)
+        gl.addWidget(desc, 1, 1)
+        gl.addWidget(QLabel("GitHub:"), 2, 0)
+        link = QLabel(f'<a style="color:#8fc1ff" href="{updater.REPO_URL}">{updater.REPO_URL}</a>')
+        link.setOpenExternalLinks(True)
+        gl.addWidget(link, 2, 1)
+        v.addWidget(gi)
+
+        gu = QGroupBox("Update")
+        ul = QVBoxLayout(gu)
+        self.lbl_update_status = QLabel(f"Đang dùng v{APP_VERSION}. Chưa kiểm tra bản mới.")
+        self.lbl_update_status.setWordWrap(True)
+        ul.addWidget(self.lbl_update_status)
+        row = QHBoxLayout()
+        self.btn_update = self._btn("⟳  Kiểm tra update", lambda: self.check_update(silent=False), "update",
+                                    f"Kiểm tra & cập nhật từ {updater.RELEASES_URL}")
+        row.addWidget(self.btn_update)
+        rel = QLabel(f'<a style="color:#8fc1ff" href="{updater.RELEASES_URL}">Xem các bản phát hành</a>')
+        rel.setOpenExternalLinks(True)
+        row.addWidget(rel)
+        row.addStretch(1)
+        ul.addLayout(row)
+        self.chk_auto_update = QCheckBox("Tự kiểm tra update khi mở app")
+        ul.addWidget(self.chk_auto_update)
+        v.addWidget(gu)
+
+        foot = QLabel(f"© {time.strftime('%Y')} {APP_AUTHOR}")
+        foot.setObjectName("dim")
+        foot.setAlignment(Qt.AlignCenter)
+        v.addWidget(foot)
+        bb = QDialogButtonBox(QDialogButtonBox.Close)
+        bb.button(QDialogButtonBox.Close).setText("Đóng")
+        bb.rejected.connect(dlg.close)
+        v.addWidget(bb)
+        dlg.finished.connect(lambda *_: save_settings(self._collect_settings()))
+        self.dlg_info = dlg
+
+    def _popup(self, dlg):
+        dlg.setWindowModality(Qt.ApplicationModal)
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+
+    def open_settings(self):
+        self._popup(self.dlg_settings)
+
+    def open_info(self):
+        self._popup(self.dlg_info)
+
+    def res_for(self, prefix):
+        if prefix == "Scs":
+            return self.sp_scs_w.value(), self.sp_scs_h.value()
+        if prefix == "Icon":
+            return self.sp_icon_w.value(), self.sp_icon_h.value()
+        return None
+
+    def reset_sizes(self):
+        self.sp_scs_w.setValue(DEFAULT_RES["Scs"][0])
+        self.sp_scs_h.setValue(DEFAULT_RES["Scs"][1])
+        self.sp_icon_w.setValue(DEFAULT_RES["Icon"][0])
+        self.sp_icon_h.setValue(DEFAULT_RES["Icon"][1])
+        self.sp_percent.setValue(100)
+
+    def _on_size_changed(self, *_):
+        p = self.sp_percent.value() / 100.0
+        sw, sh = self.res_for("Scs")
+        iw, ih = self.res_for("Icon")
+        if hasattr(self, "lbl_size_preview"):
+            self.lbl_size_preview.setText(f"→ thực tế: Scs {int(sw * p)}×{int(sh * p)}, Icon {int(iw * p)}×{int(ih * p)}")
+        self._refresh_tree_res()
+        self._refresh_cfg_label()
+
+    def _refresh_cfg_label(self):
+        if not hasattr(self, "btn_cfg"):
+            return
+        txt = self.cmb_blender.currentText()
+        short = txt.split("  -  ")[0] if "  -  " in txt else (os.path.basename(txt) if txt else "")
+        if not self.blender_exe():
+            short = "⚠ chưa có blender.exe"
+        sw, sh = self.res_for("Scs")
+        iw, ih = self.res_for("Icon")
+        pct = self.sp_percent.value()
+        self.btn_cfg.setText(f"{short}   |   Scs {sw}×{sh}   |   Icon {iw}×{ih}"
+                             + (f"   |   {pct}%" if pct != 100 else "") + "   ⚙")
+
+    def _refresh_tree_res(self):
+        if not hasattr(self, "tree"):
+            return
+        self.tree.blockSignals(True)
+        for i in range(self.tree.topLevelItemCount()):
+            top = self.tree.topLevelItem(i)
+            d = top.data(0, Qt.UserRole) or {}
+            res = self.res_for(d.get("prefix"))
+            if res and "frame" in d:
+                top.setText(1, f"{res[0]}×{res[1]}  F{d['frame']}")
+        self.tree.blockSignals(False)
+
+    def _res_args(self):
+        sw, sh = self.res_for("Scs")
+        iw, ih = self.res_for("Icon")
+        return ["--scs-res", f"{sw}x{sh}", "--icon-res", f"{iw}x{ih}"]
+
     def _load_into_ui(self):
         s = self.settings
         self.ed_blend.setText(s.get("blend_file", ""))
@@ -449,6 +651,13 @@ class MainWindow(QMainWindow):
         self.chk_gpu.setChecked(s.get("gpu", True))
         self.sp_frame.setValue(int(s.get("start_frame", 2)))
         self.sp_percent.setValue(int(s.get("percent", 100)))
+        sr = s.get("scs_res") or DEFAULT_RES["Scs"]
+        ir = s.get("icon_res") or DEFAULT_RES["Icon"]
+        self.sp_scs_w.setValue(int(sr[0]))
+        self.sp_scs_h.setValue(int(sr[1]))
+        self.sp_icon_w.setValue(int(ir[0]))
+        self.sp_icon_h.setValue(int(ir[1]))
+        self._on_size_changed()
         self.chk_auto_update.setChecked(s.get("auto_check_update", True))
         (self.rb_checked if s.get("mode") == "checked" else self.rb_all).setChecked(True)
         if s.get("blender_exe") and os.path.isfile(s["blender_exe"]):
@@ -463,6 +672,8 @@ class MainWindow(QMainWindow):
         s["gpu"] = self.chk_gpu.isChecked()
         s["start_frame"] = self.sp_frame.value()
         s["percent"] = self.sp_percent.value()
+        s["scs_res"] = list(self.res_for("Scs"))
+        s["icon_res"] = list(self.res_for("Icon"))
         s["auto_check_update"] = self.chk_auto_update.isChecked()
         s["mode"] = "checked" if self.rb_checked.isChecked() else "all"
         return s
@@ -589,7 +800,8 @@ class MainWindow(QMainWindow):
         blend = self.ed_blend.text().strip().strip('"')
         out = self.ed_out.text().strip().strip('"')
         if not exe or not os.path.isfile(exe):
-            QMessageBox.warning(self, APP_NAME, "Chưa có blender.exe hợp lệ. Bấm 'Dò lại' hoặc 'Chọn...'.")
+            QMessageBox.warning(self, APP_NAME, "Chưa có blender.exe hợp lệ.\nHãy chọn trong ⚙ Setting.")
+            self.open_settings()
             return None
         if not blend or not os.path.isfile(blend):
             QMessageBox.warning(self, APP_NAME, "Chưa chọn file .blend (hoặc file không tồn tại).")
@@ -791,7 +1003,7 @@ class MainWindow(QMainWindow):
         self.lbl_status.setText("Đang quét scene...")
         self.write_log(f"\n=== QUÉT SCENE: {blend} ===")
         args = ["--background", blend, "--python", CORE_SCRIPT, "--python-exit-code", "1", "--",
-                "--scan-json", self.scan_json_path, "--start-frame", str(self.sp_frame.value())]
+                "--scan-json", self.scan_json_path, "--start-frame", str(self.sp_frame.value())] + self._res_args()
         self._start_process(exe, args, "scan")
 
     def _on_scan_finished(self, code):
@@ -821,10 +1033,12 @@ class MainWindow(QMainWindow):
 
         n_scs = n_icon = img_scs = img_icon = 0
         for c in data.get("collections", []):
-            top = QTreeWidgetItem([f"{c['name']}", f"{c['resolution'][0]}×{c['resolution'][1]}  F{c['frame']}",
+            res = self.res_for(c["prefix"]) or c["resolution"]
+            top = QTreeWidgetItem([f"{c['name']}", f"{res[0]}×{res[1]}  F{c['frame']}",
                                    f"{len(c['items'])} ảnh"])
             top.setFlags(top.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsAutoTristate)
-            top.setData(0, Qt.UserRole, {"kind": "col", "prefix": c["prefix"], "name": c["name"]})
+            top.setData(0, Qt.UserRole, {"kind": "col", "prefix": c["prefix"], "name": c["name"],
+                                         "frame": c["frame"]})
             f = top.font(0)
             f.setBold(True)
             top.setFont(0, f)
@@ -988,7 +1202,7 @@ class MainWindow(QMainWindow):
 
         args = ["--background", blend, "--python", CORE_SCRIPT, "--python-exit-code", "1", "--",
                 "--output", out, "--start-frame", str(self.sp_frame.value()),
-                "--percent", str(self.sp_percent.value())]
+                "--percent", str(self.sp_percent.value())] + self._res_args()
         if self.sp_percent.value() < 100:
             self.write_log(f"!!! Lưu ý: đang render ở {self.sp_percent.value()}% độ phân giải (render thử).")
         if self.chk_gpu.isChecked():
@@ -1033,19 +1247,27 @@ class MainWindow(QMainWindow):
 
     def _on_update_checked(self, info, err, silent):
         self.btn_update.setEnabled(not self._busy())
-        self.btn_update.setText("⟳  Update online")
+        self.btn_update.setText("⟳  Kiểm tra update")
         if err:
             if not silent:
                 QMessageBox.warning(self, "Update", f"Không kiểm tra được update:\n{err}")
             self.write_log(f"[update] lỗi: {err}")
+            self.lbl_update_status.setText(f"Đang dùng v{APP_VERSION}. Không kiểm tra được: {err}")
             return
         lver = updater.local_version()
         rver = info.get("version") or "?"
+        self.lbl_update_status.setText(
+            f"Đang dùng v{lver}. Bản mới nhất trên GitHub: {info.get('tag')} ({info.get('date', '')}).")
         if not updater.is_newer(info, lver):
+            self.btn_info.setText("ⓘ  Info")
             self.write_log(f"[update] Đang dùng bản mới nhất (v{lver}, release mới nhất: {info.get('tag')}).")
             if not silent:
                 QMessageBox.information(self, "Update", f"Bạn đang dùng bản mới nhất (v{lver}).")
             return
+        self.btn_info.setText("ⓘ  Info  ●")
+        self.btn_info.setToolTip(f"Có bản mới {info.get('tag')} — mở Info để update")
+        self.lbl_update_status.setText(f"<b style='color:#6fd36f'>Có bản mới {info.get('tag')}</b> "
+                                       f"({info.get('date', '')}). Đang dùng v{lver}.")
         notes = info.get("notes", "")
         if len(notes) > 900:
             notes = notes[:900] + "..."
@@ -1065,7 +1287,7 @@ class MainWindow(QMainWindow):
 
     def _on_update_installed(self, ok, err):
         self.btn_update.setEnabled(True)
-        self.btn_update.setText("⟳  Update online")
+        self.btn_update.setText("⟳  Kiểm tra update")
         if not ok:
             QMessageBox.critical(self, "Update", f"Cập nhật thất bại:\n{err}")
             return

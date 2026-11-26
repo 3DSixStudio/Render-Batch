@@ -13,6 +13,9 @@ Tham so (sau dau "--"):
     --only A,B          chi render cac collection nay (vd: Scs_3,Icon_2)
     --select FILE.json  chi render cac item co key nam trong file (list string)
     --scan-json FILE    KHONG render, chi quet scene va ghi danh sach item ra JSON
+    --scs-res WxH       size anh Scs (mac dinh 2796x2048)
+    --icon-res WxH      size anh Icon (mac dinh 2048x2048)
+    --percent N         % do phan giai (100 = full)
 
 Quy tac:
   - Collection "Scs_<so>"  -> 2796 x 2048 | "Icon_<so>" -> 2048 x 2048
@@ -84,6 +87,8 @@ def parse_args():
     p.add_argument("--select", default=None)
     p.add_argument("--scan-json", default=None)
     p.add_argument("--gpu", action="store_true")
+    p.add_argument("--scs-res", default=None, help="Size anh Scs, vd 2796x2048")
+    p.add_argument("--icon-res", default=None, help="Size anh Icon, vd 2048x2048")
     p.add_argument("--percent", type=int, default=100,
                    help="% do phan giai (100 = full; 25-50 de render thu nhanh)")
     return p.parse_args(argv)
@@ -495,8 +500,30 @@ def do_render(args):
         sys.exit(2)
 
 
+def _parse_res(text):
+    m = re.match(r"^\s*(\d+)\s*[xX*×]\s*(\d+)\s*$", text or "")
+    if not m:
+        return None
+    w, h = int(m.group(1)), int(m.group(2))
+    return (w, h) if w > 0 and h > 0 else None
+
+
+def apply_custom_resolutions(args):
+    for key, prefix in (("scs_res", "Scs"), ("icon_res", "Icon")):
+        val = getattr(args, key, None)
+        if val:
+            res = _parse_res(val)
+            if res:
+                RESOLUTIONS[prefix] = res
+            else:
+                print(f"!!! Bo qua --{key.replace('_', '-')} '{val}' (sai dinh dang, can dang 2796x2048)")
+    print(f"=== Size anh: Scs {RESOLUTIONS['Scs'][0]}x{RESOLUTIONS['Scs'][1]} | "
+          f"Icon {RESOLUTIONS['Icon'][0]}x{RESOLUTIONS['Icon'][1]} ===")
+
+
 def main():
     args = parse_args()
+    apply_custom_resolutions(args)
     if args.scan_json:
         do_scan(args)
     else:
