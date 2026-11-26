@@ -1,0 +1,60 @@
+name: Auto Release
+
+# Tu tao GitHub Release khi so trong version.txt thay doi tren nhanh main.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "version.txt"
+      - "release_notes.md"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Doc version
+        id: ver
+        run: |
+          V="$(tr -d ' \r\n' < version.txt)"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "tag=v$V" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dong goi ZIP
+        if: steps.ver.outputs.exists == 'false'
+        run: |
+          git archive --format=zip --prefix=Render-Batch/ \
+            -o "SCS_Batch_Render_${{ steps.ver.outputs.tag }}.zip" HEAD
+
+      - name: Tao Release
+        if: steps.ver.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.ver.outputs.tag }}"
+          if [ -s release_notes.md ]; then
+            NOTES_ARGS=(--notes-file release_notes.md)
+          else
+            NOTES_ARGS=(--generate-notes)
+          fi
+          gh release create "$TAG" "SCS_Batch_Render_${TAG}.zip" \
+            --target "$GITHUB_SHA" \
+            --title "SCS Batch Render $TAG" \
+            "${NOTES_ARGS[@]}"
+
+      - name: Bo qua (tag da ton tai)
+        if: steps.ver.outputs.exists == 'true'
+        run: echo "Tag ${{ steps.ver.outputs.tag }} da co Release -> bo qua. Tang so trong version.txt de ra ban moi."

@@ -41,8 +41,8 @@ App Windows (PySide6) để render hàng loạt các collection `Scs_N` / `Icon_
 blender --background scene.blend --python scs_render_core.py --python-exit-code 1 -- --output D:\renders [--gpu] [--only Scs_1,Icon_2] [--percent 25]
 ```
 
-## Phát hành bản mới
+## Phát hành bản mới (tự động)
 
-1. Sửa code, tăng số trong `version.txt` (vd `1.0.1`), push lên `main`.
-2. Tạo Release với tag `v1.0.1` (đúng số trong `version.txt`), đính kèm `SCS_Batch_Render_v1.0.1.zip` (thư mục gốc `Render-Batch/`).
-3. App của mọi người bấm *Update online* sẽ thấy bản mới. Code chỉ push lên `main` mà chưa Release thì app không nhận.
+1. Sửa code, ghi thay đổi vào `release_notes.md`, tăng số trong `version.txt` (vd `1.0.1`).
+2. Push lên `main` → GitHub Actions (`.github/workflows/release.yml`) tự đóng gói `SCS_Batch_Render_v1.0.1.zip` và tạo Release `v1.0.1`.
+3. App của mọi người bấm *Update online* sẽ thấy bản mới. Push mà không đổi số version thì không tạo Release.
