@@ -10,6 +10,7 @@ import re
 import sys
 import json
 import time
+import shutil
 import tempfile
 import subprocess
 
@@ -338,34 +339,61 @@ class StatCard(QFrame):
             self.sub.setText(sub)
 
 
-class PreviewImage(QLabel):
-    """Image label that keeps the picture as large as the space allows (aspect kept)."""
+class PreviewImage(QWidget):
+    """Preview frame with a fixed 2796x2048 aspect ratio, as large as the space allows.
+    The rendered image is fitted inside the frame (aspect kept)."""
+
+    ASPECT = 2796 / 2048
 
     def __init__(self, text=""):
-        super().__init__(text)
-        self.setObjectName("thumb")
-        self.setAlignment(Qt.AlignCenter)
-        self.setMinimumSize(160, 160)
+        super().__init__()
+        self.text = text
+        self._pm = None
+        self.setMinimumSize(200, 150)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setCursor(Qt.PointingHandCursor)
-        self._pm = None
 
     def set_image(self, pm):
         self._pm = pm
-        self._rescale()
+        self.update()
 
-    def _rescale(self):
-        if self._pm is None or self._pm.isNull():
-            return
-        super().setPixmap(self._pm.scaled(max(1, self.width() - 12), max(1, self.height() - 12),
-                                          Qt.KeepAspectRatio, Qt.SmoothTransformation))
+    def setText(self, text):
+        self.text = text
+        self.update()
 
-    def resizeEvent(self, e):
-        super().resizeEvent(e)
-        self._rescale()
+    def frame_rect(self):
+        w, h = self.width(), self.height()
+        if w / max(1, h) > self.ASPECT:
+            fh = h
+            fw = h * self.ASPECT
+        else:
+            fw = w
+            fh = w / self.ASPECT
+        return QRectF((w - fw) / 2, (h - fh) / 2, fw, fh)
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.SmoothPixmapTransform)
+        r = self.frame_rect().adjusted(1, 1, -1, -1)
+        pen = QPen(QColor("#dfe2ec"), 1, Qt.DashLine)
+        p.setPen(pen)
+        p.setBrush(QColor("#f4f5fa"))
+        p.drawRoundedRect(r, 12, 12)
+        if self._pm is not None and not self._pm.isNull():
+            inner = r.adjusted(8, 8, -8, -8)
+            pw, ph = self._pm.width(), self._pm.height()
+            sc = min(inner.width() / pw, inner.height() / ph)
+            tw, th = pw * sc, ph * sc
+            target = QRectF(inner.center().x() - tw / 2, inner.center().y() - th / 2, tw, th)
+            p.drawPixmap(target, self._pm, QRectF(0, 0, pw, ph))
+        else:
+            p.setPen(QColor("#b4b8c8"))
+            p.drawText(r, Qt.AlignCenter, self.text)
+        p.end()
 
     def sizeHint(self):
-        return QSize(320, 320)
+        return QSize(420, int(420 / self.ASPECT))
 
 
 class Ring(QWidget):
@@ -708,40 +736,39 @@ class MainWindow(QMainWindow):
     def _progress_card(self):
         """Shared by both workspaces: a Preview card (current item + big last image) and a Log card."""
         w = {}
-        card = Card("Preview", "Current image and the last finished image")
+        card = Card("Preview")
+        card.lay.setSpacing(6)
+        tr = QHBoxLayout()
         w["now"] = QLabel("Idle")
         w["now"].setObjectName("nowTitle")
-        w["now"].setWordWrap(True)
-        card.lay.addWidget(w["now"])
+        tr.addWidget(w["now"], 1)
+        w["sample"] = QLabel("")
+        w["sample"].setObjectName("sub")
+        w["sample"].setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        tr.addWidget(w["sample"])
+        card.lay.addLayout(tr)
         w["info"] = QLabel("Press Start Render to begin.")
         w["info"].setObjectName("sub")
         w["info"].setWordWrap(True)
         card.lay.addWidget(w["info"])
-        br = QHBoxLayout()
-        br.setSpacing(10)
         w["bar"] = QProgressBar()
         w["bar"].setRange(0, 100)
         w["bar"].setValue(0)
         w["bar"].setFixedHeight(8)
-        br.addWidget(w["bar"], 1)
-        w["sample"] = QLabel("")
-        w["sample"].setObjectName("sub")
-        w["sample"].setMinimumWidth(90)
-        w["sample"].setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        br.addWidget(w["sample"])
-        card.lay.addLayout(br)
-        w["time"] = QLabel("")
-        w["time"].setObjectName("sub")
-        w["time"].setWordWrap(True)
-        card.lay.addWidget(w["time"])
-        w["img"] = PreviewImage("No image yet")
+        card.lay.addWidget(w["bar"])
+        w["img"] = PreviewImage("No image yet  ·  2796 × 2048 preview")
         w["img"].setToolTip("Click to open the image")
         card.lay.addWidget(w["img"], 1)
+        br = QHBoxLayout()
+        br.setSpacing(16)
         w["cap"] = QLabel("Last finished image")
         w["cap"].setObjectName("sub")
-        w["cap"].setAlignment(Qt.AlignCenter)
-        w["cap"].setWordWrap(True)
-        card.lay.addWidget(w["cap"])
+        br.addWidget(w["cap"], 1)
+        w["time"] = QLabel("")
+        w["time"].setObjectName("sub")
+        w["time"].setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        br.addWidget(w["time"])
+        card.lay.addLayout(br)
         w["card"] = card
 
         lc = Card("Log", "Blender output")
@@ -865,21 +892,24 @@ class MainWindow(QMainWindow):
         return x
 
     def _build_items_card(self):
-        card = Card("Scene Items", "Tick the images to render")
+        card = Card("Scene Items")
+        card.lay.setSpacing(8)
+        sr = QHBoxLayout()
+        sr.setSpacing(6)
         self.ed_search = QLineEdit()
         self.ed_search.setObjectName("search")
         self.ed_search.setPlaceholderText("Search...")
         self.ed_search.addAction(make_icon("search", SUB), QLineEdit.LeadingPosition)
         self.ed_search.setClearButtonEnabled(True)
-        self.ed_search.setFixedWidth(190)
         self.ed_search.textChanged.connect(self.apply_filter)
-        card.head.addWidget(self.ed_search)
+        sr.addWidget(self.ed_search, 1)
         self.cmb_filter = QComboBox()
         self.cmb_filter.addItems(["Show: all", "Show: Scs", "Show: Icon", "Show: Custom",
                                   "Show: maps", "Show: objects"])
-        self.cmb_filter.setFixedWidth(135)
+        self.cmb_filter.setFixedWidth(130)
         self.cmb_filter.currentIndexChanged.connect(self.apply_filter)
-        card.head.addWidget(self.cmb_filter)
+        sr.addWidget(self.cmb_filter)
+        card.lay.addLayout(sr)
 
         row = QHBoxLayout()
         row.setSpacing(6)
@@ -896,14 +926,18 @@ class MainWindow(QMainWindow):
         row.addWidget(self.rb_all)
         row.addWidget(self.rb_checked)
         row.addStretch(1)
+        card.lay.addLayout(row)
+        row = QHBoxLayout()
+        row.setSpacing(6)
         tick = QLabel("Tick:")
         tick.setObjectName("sub")
         row.addWidget(tick)
         for text, slot in (("All", lambda: self.set_all_checked(True)),
                            ("None", lambda: self.set_all_checked(False)),
-                           ("Scs", lambda: self.check_prefix("Scs")),
-                           ("Icon", lambda: self.check_prefix("Icon"))):
+                           ("Scs only", lambda: self.check_prefix("Scs")),
+                           ("Icon only", lambda: self.check_prefix("Icon"))):
             row.addWidget(self._btn(text, slot, "pill"))
+        row.addStretch(1)
         card.lay.addLayout(row)
 
         self.tree = QTreeWidget()
@@ -1469,6 +1503,8 @@ class MainWindow(QMainWindow):
             for rel, it in self.a_items.items():
                 if it.checkState(0) == Qt.Checked:
                     jobs.append({"key": rel, "path": os.path.join(folder, rel), "name": it.data(1, Qt.UserRole)})
+        self.a_is_test = test
+        self.a_out_dir = out
         if not jobs:
             QMessageBox.information(self, APP_NAME, "No FBX file is ticked.")
             return
@@ -1583,17 +1619,27 @@ class MainWindow(QMainWindow):
         self.a_last_image = path
         self.a_img.set_image(pm)
         self.a_img.setToolTip(path)
-        self.a_lbl_img.setText(self._elide(os.path.basename(path), 24) + f"\n{pm.width()}×{pm.height()}")
+        self.a_lbl_img.setText(self._elide(os.path.basename(path), 30) + f"  ·  {pm.width()}×{pm.height()}")
+
+    def _asset_remove_test_folder(self):
+        """After a real render, the _Test folder (made by 'Test 1 file') is no longer needed."""
+        test_dir = os.path.join(getattr(self, "a_out_dir", "") or "", "_Test")
+        if os.path.basename(os.path.normpath(test_dir)) == "_Test" and os.path.isdir(test_dir):
+            try:
+                shutil.rmtree(test_dir)
+                self.a_log.appendPlainText(f"Removed test folder: {test_dir}")
+            except Exception as e:
+                self.a_log.appendPlainText(f"!!! Could not remove the test folder {test_dir}: {e}")
 
     def _asset_tick(self):
         el = time.time() - self.a_start_time
-        txt = f"Elapsed {human_time(el)}"
+        txt = ""
         if self.item_start:
-            txt += f"  ·  this file {human_time(time.time() - self.item_start)}"
+            txt = f"This file {human_time(time.time() - self.item_start)}"
         if self.a_secs:
             avg = sum(self.a_secs) / len(self.a_secs)
             eta = human_time(avg * (self.a_total - self.a_done))
-            txt += f"\nAverage {avg:.1f}s per file"
+            txt += f"  ·  avg {avg:.1f}s"
             self.a_st_time.set(human_time(el), f"ETA {eta}")
         else:
             self.a_st_time.set(human_time(el), "ETA --:--")
@@ -1611,6 +1657,8 @@ class MainWindow(QMainWindow):
         elif self.a_finish:
             ok, fail = self.a_finish.get("ok", 0), self.a_finish.get("fail", 0)
             msg = f"Finished: {ok} OK, {fail} failed, total {el}."
+            if not getattr(self, "a_is_test", False):
+                self._asset_remove_test_folder()
             self.a_lbl_now.setText("All done ✓" if not fail else "Finished with errors")
             QApplication.alert(self)
         else:
@@ -2003,14 +2051,14 @@ class MainWindow(QMainWindow):
             return
         el = time.time() - self.render_start
         it = time.time() - self.item_start if self.item_start else 0
-        txt = f"This image: {human_time(it)}"
+        txt = f"This image {human_time(it)}"
         if self.item_remaining:
-            txt += f"  (~{self.item_remaining} left)"
+            txt += f" (~{self.item_remaining} left)"
         eta = "--:--"
         if self.done_secs and self.total:
             avg = sum(self.done_secs) / len(self.done_secs)
             eta = human_time(avg * (self.total - self.done_count))
-            txt += f"\nAverage {avg:.1f}s per image"
+            txt += f"  ·  avg {avg:.1f}s"
         self.lbl_time.setText(txt)
         self.st_time.set(human_time(el), f"ETA {eta}")
 
@@ -2345,7 +2393,7 @@ class MainWindow(QMainWindow):
             return
         self.last_image = path
         self.img.set_image(pm)
-        self.lbl_img.setText(self._elide(os.path.basename(path), 24) + f"\n{pm.width()}×{pm.height()}")
+        self.lbl_img.setText(self._elide(os.path.basename(path), 30) + f"  ·  {pm.width()}×{pm.height()}")
         self.lbl_img.setToolTip(path)
 
     def open_last_image(self):
