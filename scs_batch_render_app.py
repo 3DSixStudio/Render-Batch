@@ -29,6 +29,7 @@ import updater
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CORE_SCRIPT = os.path.join(APP_DIR, "scs_render_core.py")
+ASSET_CORE = os.path.join(APP_DIR, "asset_render_core.py")
 APP_NAME = "Render Batch"
 APP_AUTHOR = "Hari"
 DEFAULT_RES = {"Scs": (2796, 2048), "Icon": (2048, 2048)}
@@ -583,8 +584,9 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         self.stack.addWidget(content)                        # 0 dashboard
-        self.stack.addWidget(self._build_settings_page())    # 1 settings
-        self.stack.addWidget(self._build_info_page())        # 2 info
+        self.stack.addWidget(self._build_asset_page())       # 1 asset render
+        self.stack.addWidget(self._build_settings_page())    # 2 settings
+        self.stack.addWidget(self._build_info_page())        # 3 info
         outer.addWidget(self.stack, 1)
 
     # ------------------------------------------------------------------ sidebar (navigation only)
@@ -636,6 +638,7 @@ class MainWindow(QMainWindow):
             return b
 
         nav("dash", "Dashboard", "dashboard")
+        nav("asset", "Asset Render", "image")
         nav("settings", "Settings", "settings")
         self.nav_info = nav("info", "Info && Update", "info")
         self.nav_buttons["dash"].setChecked(True)
@@ -1072,8 +1075,544 @@ class MainWindow(QMainWindow):
         except Exception:
             return 'No release notes.'
 
+    # ================================================================== Asset Render page
+    @staticmethod
+    def asset_output_name(stem):
+        """Boy-Loop-Idle -> Boy ; anything after '-Loop' is removed."""
+        idx = stem.lower().find("-loop")
+        name = stem[:idx] if idx > 0 else stem
+        name = re.sub(r'[<>:"/\\|?*]+', "_", name).strip(" .") or "unnamed"
+        return name
+
+    def _build_asset_page(self):
+        page = QWidget()
+        pv = QVBoxLayout(page)
+        pv.setContentsMargins(26, 20, 26, 20)
+        pv.setSpacing(16)
+
+        hrow = QHBoxLayout()
+        hrow.setSpacing(10)
+        col = QVBoxLayout()
+        col.setSpacing(0)
+        h = QLabel("Asset Render")
+        h.setObjectName("h1")
+        col.addWidget(h)
+        self.a_status = QLabel("Pick a folder of FBX files - camera, lights and framing are set up automatically.")
+        self.a_status.setObjectName("sub")
+        col.addWidget(self.a_status)
+        hrow.addLayout(col)
+        hrow.addStretch(1)
+        self.a_btn_stop = self._btn("  Stop Now", self.stop_now, "danger", icon="stop", icon_color=RED)
+        self.a_btn_stop.setEnabled(False)
+        self.a_btn_start = self._btn("  Start Render", self.asset_start, "primary", icon="play", icon_color="#ffffff")
+        self.a_btn_start.setMinimumWidth(170)
+        hrow.addWidget(self.a_btn_stop)
+        hrow.addWidget(self.a_btn_start)
+        pv.addLayout(hrow)
+
+        # ---- row 1: assets | camera & light
+        row1 = QHBoxLayout()
+        row1.setSpacing(14)
+
+        c1 = Card("Assets", "Folder with your FBX files")
+        g = QGridLayout()
+        g.setHorizontalSpacing(8)
+        g.setVerticalSpacing(10)
+        g.setColumnStretch(1, 1)
+        l = QLabel("FBX folder")
+        l.setObjectName("fieldLabel")
+        g.addWidget(l, 0, 0)
+        self.a_ed_dir = QLineEdit()
+        self.a_ed_dir.setPlaceholderText("Drop a folder here or click Browse")
+        self.a_ed_dir.editingFinished.connect(self.asset_scan)
+        g.addWidget(self.a_ed_dir, 0, 1)
+        g.addWidget(self._btn("Browse", self.asset_browse_dir), 0, 2)
+        g.addWidget(self._btn("Refresh", self.asset_scan, icon="scan"), 0, 3)
+        l = QLabel("Output folder")
+        l.setObjectName("fieldLabel")
+        g.addWidget(l, 1, 0)
+        self.a_ed_out = QLineEdit()
+        self.a_ed_out.setPlaceholderText("Folder for the PNG images")
+        g.addWidget(self.a_ed_out, 1, 1)
+        g.addWidget(self._btn("Browse", self.asset_browse_out), 1, 2)
+        g.addWidget(self._btn("Open", self.asset_open_out, icon="folder"), 1, 3)
+        c1.lay.addLayout(g)
+        self.a_chk_sub = QCheckBox("Include subfolders")
+        self.a_chk_sub.toggled.connect(lambda *_: self.asset_scan())
+        c1.lay.addWidget(self.a_chk_sub)
+        note = QLabel("Image name = FBX name. Everything after “-Loop” is removed "
+                      "(Boy-Loop-Idle.fbx → Boy.png). Parents are rendered together with all their children.")
+        note.setObjectName("sub")
+        note.setWordWrap(True)
+        c1.lay.addWidget(note)
+        c1.lay.addStretch(1)
+        row1.addWidget(c1, 5)
+
+        c2 = Card("Camera & Light", "Lights and framing are automatic")
+        g = QGridLayout()
+        g.setHorizontalSpacing(10)
+        g.setVerticalSpacing(10)
+        l = QLabel("Camera angle")
+        l.setObjectName("fieldLabel")
+        g.addWidget(l, 0, 0)
+        vrow = QHBoxLayout()
+        vrow.setSpacing(6)
+        self.a_rb_34 = QRadioButton("3/4 view")
+        self.a_rb_front = QRadioButton("Front view")
+        self.a_view_group = QButtonGroup(self)
+        for rb in (self.a_rb_34, self.a_rb_front):
+            rb.setObjectName("mode")
+            rb.setCursor(Qt.PointingHandCursor)
+            self.a_view_group.addButton(rb)
+            vrow.addWidget(rb)
+        self.a_rb_34.setChecked(True)
+        self.a_rb_34.toggled.connect(self._asset_view_changed)
+        vrow.addStretch(1)
+        g.addLayout(vrow, 0, 1, 1, 3)
+
+        l = QLabel("Camera height")
+        l.setObjectName("fieldLabel")
+        g.addWidget(l, 1, 0)
+        self.a_sp_elev = QSpinBox()
+        self.a_sp_elev.setRange(-45, 89)
+        self.a_sp_elev.setSuffix(" °")
+        self.a_sp_elev.setValue(20)
+        self.a_sp_elev.setToolTip("Angle above the asset. Default: 20° for 3/4, 8° for front.")
+        g.addWidget(self.a_sp_elev, 1, 1)
+        l = QLabel("Frame margin")
+        l.setObjectName("fieldLabel")
+        g.addWidget(l, 1, 2)
+        self.a_sp_margin = QSpinBox()
+        self.a_sp_margin.setRange(0, 40)
+        self.a_sp_margin.setSuffix(" %")
+        self.a_sp_margin.setValue(6)
+        self.a_sp_margin.setToolTip("Empty space kept around the asset")
+        g.addWidget(self.a_sp_margin, 1, 3)
+
+        l = QLabel("Image size")
+        l.setObjectName("fieldLabel")
+        g.addWidget(l, 2, 0)
+        self.a_sp_w = QSpinBox()
+        self.a_sp_h = QSpinBox()
+        for sp in (self.a_sp_w, self.a_sp_h):
+            sp.setRange(16, 16384)
+            sp.setValue(2048)
+            sp.setSuffix(" px")
+        g.addWidget(self.a_sp_w, 2, 1)
+        g.addWidget(self.a_sp_h, 2, 3)
+        x = QLabel("×")
+        x.setObjectName("sub")
+        x.setAlignment(Qt.AlignCenter)
+        g.addWidget(x, 2, 2)
+
+        l = QLabel("Engine")
+        l.setObjectName("fieldLabel")
+        g.addWidget(l, 3, 0)
+        self.a_cmb_engine = QComboBox()
+        self.a_cmb_engine.addItems(["Cycles (best look)", "EEVEE (fastest)"])
+        g.addWidget(self.a_cmb_engine, 3, 1)
+        l = QLabel("Samples")
+        l.setObjectName("fieldLabel")
+        g.addWidget(l, 3, 2)
+        self.a_sp_samples = QSpinBox()
+        self.a_sp_samples.setRange(1, 4096)
+        self.a_sp_samples.setValue(64)
+        g.addWidget(self.a_sp_samples, 3, 3)
+
+        l = QLabel("Light strength")
+        l.setObjectName("fieldLabel")
+        g.addWidget(l, 4, 0)
+        self.a_sp_light = QSpinBox()
+        self.a_sp_light.setRange(10, 400)
+        self.a_sp_light.setValue(100)
+        self.a_sp_light.setSuffix(" %")
+        g.addWidget(self.a_sp_light, 4, 1)
+        self.a_chk_transparent = QCheckBox("Transparent background")
+        self.a_chk_transparent.setChecked(True)
+        g.addWidget(self.a_chk_transparent, 4, 2, 1, 2)
+        self.a_chk_pixel = QCheckBox("Sharp pixel textures")
+        self.a_chk_pixel.setChecked(True)
+        self.a_chk_pixel.setToolTip("Closest filtering, keeps voxel / pixel-art textures crisp")
+        g.addWidget(self.a_chk_pixel, 5, 2, 1, 2)
+        g.setColumnStretch(1, 1)
+        g.setColumnStretch(3, 1)
+        c2.lay.addLayout(g)
+        c2.lay.addStretch(1)
+        row1.addWidget(c2, 6)
+        pv.addLayout(row1)
+
+        # ---- row 2: files | progress
+        row2 = QHBoxLayout()
+        row2.setSpacing(14)
+
+        c3 = Card("FBX Files", "Tick the files to render")
+        tick = QLabel("Tick:")
+        tick.setObjectName("sub")
+        c3.head.addWidget(tick)
+        c3.head.addWidget(self._btn("All", lambda: self.asset_check_all(True), "pill"))
+        c3.head.addWidget(self._btn("None", lambda: self.asset_check_all(False), "pill"))
+        self.a_tree = QTreeWidget()
+        self.a_tree.setRootIsDecorated(False)
+        self.a_tree.setHeaderLabels(["FBX file", "Image name", "Status"])
+        self.a_tree.setAlternatingRowColors(True)
+        self.a_tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.a_tree.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.a_tree.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.a_tree.itemChanged.connect(lambda *_: self._asset_count())
+        self.a_tree.itemDoubleClicked.connect(self._asset_open_item)
+        c3.lay.addWidget(self.a_tree, 1)
+        self.a_lbl_count = QLabel("No folder selected.")
+        self.a_lbl_count.setObjectName("sub")
+        c3.lay.addWidget(self.a_lbl_count)
+        row2.addWidget(c3, 11)
+
+        c4 = Card("Progress", "Current file and last image")
+        top = QHBoxLayout()
+        top.setSpacing(14)
+        self.a_ring = Ring(116, 11)
+        self.a_ring.set_value(0, "0/0", "files")
+        top.addWidget(self.a_ring, 0, Qt.AlignVCenter)
+        info = QVBoxLayout()
+        info.setSpacing(4)
+        self.a_lbl_now = QLabel("Idle")
+        self.a_lbl_now.setObjectName("nowTitle")
+        self.a_lbl_now.setWordWrap(True)
+        info.addWidget(self.a_lbl_now)
+        self.a_lbl_time = QLabel("")
+        self.a_lbl_time.setObjectName("sub")
+        self.a_lbl_time.setWordWrap(True)
+        info.addWidget(self.a_lbl_time)
+        info.addStretch(1)
+        top.addLayout(info, 1)
+        self.a_img = QLabel("No image yet")
+        self.a_img.setObjectName("thumb")
+        self.a_img.setAlignment(Qt.AlignCenter)
+        self.a_img.setFixedSize(150, 150)
+        self.a_img.setCursor(Qt.PointingHandCursor)
+        self.a_img.mousePressEvent = lambda e: self._asset_open_path(self.a_last_image)
+        top.addWidget(self.a_img)
+        c4.lay.addLayout(top)
+        lh = QHBoxLayout()
+        ll = QLabel("Log")
+        ll.setObjectName("fieldLabel")
+        lh.addWidget(ll)
+        lh.addStretch(1)
+        lh.addWidget(self._btn("Clear", lambda: self.a_log.clear(), "pill"))
+        c4.lay.addLayout(lh)
+        self.a_log = QPlainTextEdit()
+        self.a_log.setObjectName("log")
+        self.a_log.setReadOnly(True)
+        self.a_log.setMaximumBlockCount(20000)
+        c4.lay.addWidget(self.a_log, 1)
+        row2.addWidget(c4, 9)
+        pv.addLayout(row2, 1)
+
+        self.a_items = {}
+        self.a_paths = {}
+        self.a_last_image = None
+        self.a_jobs_path = None
+        self.a_total = 0
+        self.a_done = 0
+        self.a_errors = 0
+        self.a_secs = []
+        self.a_start_time = 0.0
+        self.a_finish = None
+        return page
+
+    # ---- asset helpers
+    def _asset_view_changed(self, *_):
+        self.a_sp_elev.setValue(20 if self.a_rb_34.isChecked() else 8)
+
+    def asset_browse_dir(self):
+        d = QFileDialog.getExistingDirectory(self, "Select FBX folder", self.a_ed_dir.text())
+        if d:
+            self.a_ed_dir.setText(os.path.abspath(d))
+            if not self.a_ed_out.text().strip():
+                self.a_ed_out.setText(os.path.join(os.path.abspath(d), "Render"))
+            self.asset_scan()
+
+    def asset_browse_out(self):
+        d = QFileDialog.getExistingDirectory(self, "Select output folder", self.a_ed_out.text())
+        if d:
+            self.a_ed_out.setText(os.path.abspath(d))
+
+    def asset_open_out(self):
+        d = self.a_ed_out.text().strip()
+        if d and os.path.isdir(d):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(d))
+        else:
+            QMessageBox.information(self, APP_NAME, "The output folder does not exist yet.")
+
+    def _asset_open_path(self, p):
+        if p and os.path.isfile(p):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(p))
+
+    def _asset_open_item(self, item, col):
+        self._asset_open_path(self.a_paths.get(item.data(0, Qt.UserRole)))
+
+    def _asset_key(self):
+        return os.path.normcase(os.path.abspath(self.a_ed_dir.text().strip().strip('"') or "_"))
+
+    def _asset_remember_unchecked(self):
+        if not self.a_items:
+            return
+        un = [k for k, it in self.a_items.items() if it.checkState(0) != Qt.Checked]
+        self.settings.setdefault("asset_unchecked", {})[self._asset_key_dir] = un
+
+    def asset_scan(self, *_):
+        if hasattr(self, "_asset_key_dir"):
+            self._asset_remember_unchecked()
+        folder = self.a_ed_dir.text().strip().strip('"')
+        self.a_tree.clear()
+        self.a_items = {}
+        self.a_paths = {}
+        self._asset_key_dir = self._asset_key()
+        if not folder or not os.path.isdir(folder):
+            self.a_lbl_count.setText("Folder not found." if folder else "No folder selected.")
+            return
+        files = []
+        if self.a_chk_sub.isChecked():
+            for rootd, dirs, fs in os.walk(folder):
+                dirs[:] = [d for d in dirs if d.lower() != "render"]
+                for f in fs:
+                    if f.lower().endswith(".fbx"):
+                        files.append(os.path.join(rootd, f))
+        else:
+            files = [os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith(".fbx")]
+        files.sort(key=lambda p: os.path.relpath(p, folder).lower())
+
+        unchecked = set(self.settings.get("asset_unchecked", {}).get(self._asset_key_dir, []))
+        used = {}
+        self.a_tree.blockSignals(True)
+        for p in files:
+            rel = os.path.relpath(p, folder)
+            name = self.asset_output_name(os.path.splitext(os.path.basename(p))[0])
+            n = used.get(name.lower(), 0) + 1
+            used[name.lower()] = n
+            out_name = name if n == 1 else f"{name}_{n}"
+            it = QTreeWidgetItem([rel, out_name + ".png", ""])
+            it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
+            it.setCheckState(0, Qt.Unchecked if rel in unchecked else Qt.Checked)
+            it.setData(0, Qt.UserRole, rel)
+            it.setData(1, Qt.UserRole, out_name)
+            it.setToolTip(0, p)
+            if n > 1:
+                it.setToolTip(1, f"Another file also becomes {name}.png - this one is saved as {out_name}.png")
+                it.setForeground(1, QBrush(C_RENDERING))
+            self.a_tree.addTopLevelItem(it)
+            self.a_items[rel] = it
+        self.a_tree.blockSignals(False)
+        self._asset_count()
+        self.a_ring.set_value(0, f"0/{len(files)}", "files")
+
+    def asset_check_all(self, state):
+        self.a_tree.blockSignals(True)
+        for it in self.a_items.values():
+            it.setCheckState(0, Qt.Checked if state else Qt.Unchecked)
+        self.a_tree.blockSignals(False)
+        self._asset_count()
+
+    def _asset_count(self):
+        n = len(self.a_items)
+        c = sum(1 for it in self.a_items.values() if it.checkState(0) == Qt.Checked)
+        for it in self.a_items.values():
+            on = it.checkState(0) == Qt.Checked
+            it.setForeground(0, QBrush(C_ON if on else C_DIM))
+        self.a_lbl_count.setText(f"{n} FBX file(s) found  ·  {c} ticked" if n else "No FBX files in this folder.")
+
+    def _asset_set_status(self, key, text, color):
+        it = self.a_items.get(key)
+        if not it:
+            return
+        self.a_tree.blockSignals(True)
+        it.setText(2, text)
+        it.setForeground(2, QBrush(color))
+        self.a_tree.blockSignals(False)
+        self.a_tree.scrollToItem(it)
+
+    def _asset_load(self, s):
+        self.a_ed_dir.setText(s.get("asset_dir", ""))
+        self.a_ed_out.setText(s.get("asset_out", ""))
+        self.a_chk_sub.blockSignals(True)
+        self.a_chk_sub.setChecked(s.get("asset_subfolders", False))
+        self.a_chk_sub.blockSignals(False)
+        (self.a_rb_front if s.get("asset_view") == "front" else self.a_rb_34).setChecked(True)
+        self.a_sp_elev.setValue(int(s.get("asset_elevation", 20 if s.get("asset_view") != "front" else 8)))
+        self.a_sp_margin.setValue(int(s.get("asset_margin", 6)))
+        self.a_sp_w.setValue(int(s.get("asset_w", 2048)))
+        self.a_sp_h.setValue(int(s.get("asset_h", 2048)))
+        self.a_cmb_engine.setCurrentIndex(1 if s.get("asset_engine") == "eevee" else 0)
+        self.a_sp_samples.setValue(int(s.get("asset_samples", 64)))
+        self.a_sp_light.setValue(int(s.get("asset_light", 100)))
+        self.a_chk_transparent.setChecked(s.get("asset_transparent", True))
+        self.a_chk_pixel.setChecked(s.get("asset_pixel", True))
+        self.asset_scan()
+
+    def _asset_collect(self, s):
+        if self.a_items:
+            self._asset_remember_unchecked()
+        s["asset_dir"] = self.a_ed_dir.text().strip().strip('"')
+        s["asset_out"] = self.a_ed_out.text().strip().strip('"')
+        s["asset_subfolders"] = self.a_chk_sub.isChecked()
+        s["asset_view"] = "front" if self.a_rb_front.isChecked() else "three_quarter"
+        s["asset_elevation"] = self.a_sp_elev.value()
+        s["asset_margin"] = self.a_sp_margin.value()
+        s["asset_w"] = self.a_sp_w.value()
+        s["asset_h"] = self.a_sp_h.value()
+        s["asset_engine"] = "eevee" if self.a_cmb_engine.currentIndex() == 1 else "cycles"
+        s["asset_samples"] = self.a_sp_samples.value()
+        s["asset_light"] = self.a_sp_light.value()
+        s["asset_transparent"] = self.a_chk_transparent.isChecked()
+        s["asset_pixel"] = self.a_chk_pixel.isChecked()
+
+    # ---- run
+    def asset_start(self):
+        if self._busy():
+            return
+        exe = self.blender_exe()
+        if not exe or not os.path.isfile(exe):
+            QMessageBox.warning(self, APP_NAME, "No valid blender.exe selected.\nPlease choose one on the Settings page.")
+            self.show_page("settings")
+            return
+        if not os.path.isfile(ASSET_CORE):
+            QMessageBox.critical(self, APP_NAME, f"Missing {ASSET_CORE}. Please update the app (Info > Update).")
+            return
+        folder = self.a_ed_dir.text().strip().strip('"')
+        if not folder or not os.path.isdir(folder):
+            QMessageBox.warning(self, APP_NAME, "Please select a folder with FBX files.")
+            return
+        out = self.a_ed_out.text().strip().strip('"')
+        if not out:
+            out = os.path.join(folder, "Render")
+            self.a_ed_out.setText(out)
+        jobs = []
+        for rel, it in self.a_items.items():
+            if it.checkState(0) == Qt.Checked:
+                jobs.append({"key": rel, "path": os.path.join(folder, rel), "name": it.data(1, Qt.UserRole)})
+        if not jobs:
+            QMessageBox.information(self, APP_NAME, "No FBX file is ticked.")
+            return
+        os.makedirs(out, exist_ok=True)
+        save_settings(self._collect_settings())
+
+        fd, self.a_jobs_path = tempfile.mkstemp(prefix="rb_assets_", suffix=".json")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(jobs, f, ensure_ascii=False)
+
+        for it in self.a_items.values():
+            it.setText(2, "")
+        self.a_total = len(jobs)
+        self.a_done = 0
+        self.a_errors = 0
+        self.a_secs = []
+        self.a_finish = None
+        self.a_start_time = time.time()
+        self.item_start = 0
+        self.a_ring.set_value(0, f"0/{self.a_total}", "files")
+        self.a_lbl_now.setText("Starting Blender...")
+        self.a_lbl_time.setText("")
+
+        args = ["--background", "--python", ASSET_CORE, "--python-exit-code", "1", "--",
+                "--jobs", self.a_jobs_path, "--output", out,
+                "--view", "front" if self.a_rb_front.isChecked() else "three_quarter",
+                "--elevation", str(self.a_sp_elev.value()),
+                "--margin", str(self.a_sp_margin.value()),
+                "--width", str(self.a_sp_w.value()), "--height", str(self.a_sp_h.value()),
+                "--engine", "eevee" if self.a_cmb_engine.currentIndex() == 1 else "cycles",
+                "--samples", str(self.a_sp_samples.value()),
+                "--light", f"{self.a_sp_light.value() / 100.0:.2f}"]
+        if not self.a_chk_transparent.isChecked():
+            args.append("--opaque")
+        if not self.a_chk_pixel.isChecked():
+            args.append("--smooth-textures")
+        if self.chk_gpu.isChecked():
+            args.append("--gpu")
+        self.a_log.appendPlainText(f"\n=== ASSET RENDER: {len(jobs)} FBX file(s) -> {out} ===")
+        self._start_process(exe, args, "asset")
+
+    def _asset_line(self, line):
+        if line.startswith("@@SCS "):
+            try:
+                d = json.loads(line[6:])
+            except Exception:
+                return
+            ev = d.get("ev")
+            if ev == "item":
+                self.item_start = time.time()
+                self.a_lbl_now.setText(f"{d['label']}.png")
+                self.a_status.setText(f"Rendering {d['i']}/{d['total']}: {d.get('collection')}")
+                self._asset_set_status(d["key"], "Rendering...", C_RENDERING)
+            elif ev in ("done", "error"):
+                self.a_done += 1
+                if ev == "done":
+                    self.a_secs.append(d.get("sec", 0))
+                    self.a_paths[d["key"]] = d.get("path")
+                    self._asset_set_status(d["key"], f"Done  {d.get('sec', 0)}s", C_DONE)
+                    self._asset_show(d.get("path"))
+                else:
+                    self.a_errors += 1
+                    self._asset_set_status(d["key"], "ERROR", C_ERROR)
+                    self.a_log.appendPlainText(f"!!! ERROR {d.get('key')}: {d.get('msg')}")
+                t = max(1, self.a_total)
+                self.a_ring.set_value(self.a_done / t, f"{self.a_done}/{self.a_total}", "files")
+            elif ev == "finish":
+                self.a_finish = d
+            return
+        if self.RE_SAMPLE.search(line) or line.startswith("Fra:"):
+            return
+        if line.strip():
+            self.a_log.appendPlainText(line)
+
+    def _asset_show(self, path):
+        if not path or not os.path.isfile(path):
+            return
+        pm = QPixmap(path)
+        if pm.isNull():
+            return
+        self.a_last_image = path
+        self.a_img.setPixmap(pm.scaled(self.a_img.width() - 8, self.a_img.height() - 8,
+                                       Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self.a_img.setToolTip(path)
+
+    def _asset_tick(self):
+        el = time.time() - self.a_start_time
+        txt = f"Elapsed {human_time(el)}"
+        if self.item_start:
+            txt += f"  ·  this file {human_time(time.time() - self.item_start)}"
+        if self.a_secs:
+            avg = sum(self.a_secs) / len(self.a_secs)
+            txt += f"\nAverage {avg:.1f}s per file  ·  ETA {human_time(avg * (self.a_total - self.a_done))}"
+        self.a_lbl_time.setText(txt)
+
+    def _asset_finished(self, code):
+        el = human_time(time.time() - self.a_start_time)
+        if self.stop_requested:
+            msg = f"Stopped after {el}. {self.a_done}/{self.a_total} file(s) done."
+            self.a_lbl_now.setText("Stopped")
+            for it in self.a_items.values():
+                if it.text(2) == "Rendering...":
+                    it.setText(2, "Stopped")
+                    it.setForeground(2, QBrush(C_ERROR))
+        elif self.a_finish:
+            ok, fail = self.a_finish.get("ok", 0), self.a_finish.get("fail", 0)
+            msg = f"Finished: {ok} OK, {fail} failed, total {el}."
+            self.a_lbl_now.setText("All done ✓" if not fail else "Finished with errors")
+            QApplication.alert(self)
+        else:
+            msg = f"Blender exited (code {code}) before finishing - see the log."
+            self.a_lbl_now.setText("Blender exited")
+        self.a_status.setText(msg)
+        self.a_lbl_time.setText(msg)
+        self.a_log.appendPlainText("\n=== " + msg + " ===")
+        if self.a_jobs_path and os.path.isfile(self.a_jobs_path):
+            try:
+                os.remove(self.a_jobs_path)
+            except Exception:
+                pass
+        self.a_jobs_path = None
+
     # ------------------------------------------------------------------ page switching
-    PAGES = {"dash": 0, "settings": 1, "info": 2}
+    PAGES = {"dash": 0, "asset": 1, "settings": 2, "info": 3}
 
     def show_page(self, key):
         if self.stack.currentIndex() == self.PAGES["settings"] and key != "settings":
@@ -1168,6 +1707,7 @@ class MainWindow(QMainWindow):
         if s.get("blender_exe") and os.path.isfile(s["blender_exe"]):
             self._add_blender_item(s["blender_exe"], s["blender_exe"], select=True)
         self._on_size_changed()
+        self._asset_load(s)
 
     def _collect_settings(self):
         s = self.settings
@@ -1181,6 +1721,7 @@ class MainWindow(QMainWindow):
         s["icon_res"] = list(self.res_for("Icon"))
         s["auto_check_update"] = self.chk_auto_update.isChecked()
         s["mode"] = "checked" if self.rb_checked.isChecked() else "all"
+        self._asset_collect(s)
         return s
 
     def closeEvent(self, e):
@@ -1196,7 +1737,7 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ log
     def write_log(self, text):
-        self.log.appendPlainText(text)
+        (self.a_log if self.proc_mode == "asset" else self.log).appendPlainText(text)
 
     def save_log(self):
         path, _ = QFileDialog.getSaveFileName(
@@ -1293,6 +1834,15 @@ class MainWindow(QMainWindow):
     def dropEvent(self, e):
         for u in e.mimeData().urls():
             p = u.toLocalFile()
+            if self.stack.currentIndex() == self.PAGES["asset"]:
+                if p.lower().endswith(".fbx"):
+                    p = os.path.dirname(p)
+                if os.path.isdir(p):
+                    self.a_ed_dir.setText(os.path.abspath(p))
+                    if not self.a_ed_out.text().strip():
+                        self.a_ed_out.setText(os.path.join(os.path.abspath(p), "Render"))
+                    self.asset_scan()
+                    return
             if p.lower().endswith(".blend"):
                 self.set_blend(p)
                 return
@@ -1327,6 +1877,8 @@ class MainWindow(QMainWindow):
         return self.proc is not None and self.proc.state() != QProcess.NotRunning
 
     def _set_running(self, running):
+        self.a_btn_start.setEnabled(not running)
+        self.a_btn_stop.setEnabled(running)
         self.btn_render.setEnabled(not running)
         self.btn_scan.setEnabled(not running)
         self.btn_update.setEnabled(not running)
@@ -1363,6 +1915,9 @@ class MainWindow(QMainWindow):
             self._handle_line(line)
 
     def _handle_line(self, line):
+        if self.proc_mode == "asset":
+            self._asset_line(line)
+            return
         if line.startswith("@@SCS "):
             try:
                 self._handle_marker(json.loads(line[6:]))
@@ -1432,6 +1987,9 @@ class MainWindow(QMainWindow):
             self.tree.scrollToItem(it)
 
     def _on_tick(self):
+        if self._busy() and self.proc_mode == "asset":
+            self._asset_tick()
+            return
         if not self._busy() or self.proc_mode != "render":
             return
         el = time.time() - self.render_start
@@ -1455,7 +2013,9 @@ class MainWindow(QMainWindow):
         self.proc_mode = None
         self._set_running(False)
 
-        if mode == "scan":
+        if mode == "asset":
+            self._asset_finished(code)
+        elif mode == "scan":
             self._on_scan_finished(code)
         elif mode == "render":
             el = human_time(time.time() - self.render_start)

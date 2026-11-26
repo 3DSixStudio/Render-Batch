@@ -22,6 +22,17 @@ Created by **Hari**.
 - Scene items with check boxes, search and filter; render **all** or **checked only** (check state remembered per .blend).
 - **Stop Now** kills Blender immediately. Full render log, saveable to a file.
 
+## Asset Render
+
+Point the app at a folder of **FBX** files and it renders one PNG per file, no scene setup needed:
+
+- Each FBX is imported into an empty studio scene (cameras / lights inside the FBX are ignored).
+- Camera: **3/4 view** or **Front view**, adjustable height; the camera is moved so the whole asset fits the frame with the chosen margin (never cropped).
+- Lights: automatic key / fill / rim sun lights + soft ambient, "Standard" colour so colours stay vivid. Light strength is adjustable.
+- Parents are rendered together with all their children (everything in the FBX). Animated FBX files are posed at their first frame.
+- Image name = FBX name, with everything from `-Loop` removed: `Boy-Loop-Idle.fbx` → `Boy.png`. Duplicate names get `_2`, `_3`…
+- Transparent background and sharp pixel textures by default. Cycles or EEVEE.
+
 ## Render rules
 
 | Collection | Default size | Frame |
