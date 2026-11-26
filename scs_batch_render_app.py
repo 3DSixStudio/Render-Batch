@@ -1405,7 +1405,8 @@ class MainWindow(QMainWindow):
             self.a_items[rel] = it
         self.a_tree.blockSignals(False)
         self._asset_count()
-        self.a_st_total.set(len(files), f"in {os.path.basename(folder.rstrip('/\\')) or folder}")
+        folder_name = os.path.basename(os.path.normpath(folder)) or folder
+        self.a_st_total.set(len(files), f"in {folder_name}")
 
     def asset_check_all(self, state):
         self.a_tree.blockSignals(True)
