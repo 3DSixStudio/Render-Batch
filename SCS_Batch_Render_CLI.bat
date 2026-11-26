@@ -1,14 +1,14 @@
 @echo off
 setlocal enabledelayedexpansion
 REM ============================================================
-REM  SCS BATCH RENDER - ban dong lenh (khong can UI)
-REM  Dung chung file scs_render_core.py voi app.
+REM  SCS BATCH RENDER - command line version (no UI)
+REM  Uses the same scs_render_core.py as the app.
 REM ============================================================
 cd /d "%~dp0"
 
 set "CORE=%~dp0scs_render_core.py"
 if not exist "%CORE%" (
-    echo LOI: thieu file scs_render_core.py canh file bat nay.
+    echo ERROR: scs_render_core.py is missing next to this .bat file.
     pause
     exit /b 1
 )
@@ -20,27 +20,27 @@ if not exist "!BLENDER_EXE!" (
     )
 )
 if not exist "!BLENDER_EXE!" (
-    echo Khong tu tim thay blender.exe.
-    set /p "BLENDER_EXE=Nhap duong dan day du toi blender.exe: "
+    echo blender.exe was not found automatically.
+    set /p "BLENDER_EXE=Full path to blender.exe: "
     set "BLENDER_EXE=!BLENDER_EXE:"=!"
 )
 if not exist "!BLENDER_EXE!" (
-    echo LOI: khong tim thay blender.exe
+    echo ERROR: blender.exe not found
     pause
     exit /b 1
 )
 echo Blender: !BLENDER_EXE!
 
 set "BLEND_FILE="
-set /p "BLEND_FILE=Keo tha hoac nhap duong dan file .blend: "
+set /p "BLEND_FILE=Drag and drop or type the .blend path: "
 if not defined BLEND_FILE goto :no_blend
 set "BLEND_FILE=!BLEND_FILE:"=!"
 if not exist "!BLEND_FILE!" goto :no_blend
 
 set "OUTPUT_DIR="
-set /p "OUTPUT_DIR=Nhap thu muc luu anh: "
+set /p "OUTPUT_DIR=Output folder for images: "
 if not defined OUTPUT_DIR (
-    echo LOI: chua nhap thu muc output.
+    echo ERROR: no output folder given.
     pause
     exit /b 1
 )
@@ -48,7 +48,7 @@ set "OUTPUT_DIR=!OUTPUT_DIR:"=!"
 if not exist "!OUTPUT_DIR!" mkdir "!OUTPUT_DIR!"
 
 set "GPU_FLAG="
-set /p "USE_GPU=Ep dung GPU? (Y/N): "
+set /p "USE_GPU=Force GPU rendering? (Y/N): "
 if /i "!USE_GPU!"=="Y" set "GPU_FLAG=--gpu"
 
 set PYTHONUNBUFFERED=1
@@ -57,12 +57,12 @@ set PYTHONIOENCODING=utf-8
 set "RC=!errorlevel!"
 
 echo ============================================
-if "!RC!"=="0" (echo   XONG! Kiem tra anh trong thu muc output.) else (echo   KET THUC VOI LOI ^(code !RC!^) - xem log phia tren.)
+if "!RC!"=="0" (echo   DONE! Check the images in the output folder.) else (echo   FINISHED WITH ERRORS ^(code !RC!^) - see the log above.)
 echo ============================================
 pause
 exit /b !RC!
 
 :no_blend
-echo LOI: khong tim thay file .blend: "!BLEND_FILE!"
+echo ERROR: .blend file not found: "!BLEND_FILE!"
 pause
 exit /b 1

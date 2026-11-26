@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-SCS Batch Render - App UI (PySide6)
-Chay Blender o che do background de render hang loat Scs_N / Icon_N.
-Repo: https://github.com/3DSixStudio/Render-Batch
+SCS Batch Render - Desktop app (PySide6)
+Batch renders Scs_N / Icon_N collections by running Blender in background mode.
+Created by Hari  |  https://github.com/3DSixStudio/Render-Batch
 """
 
 import os
@@ -13,13 +13,15 @@ import time
 import tempfile
 import subprocess
 
-from PySide6.QtCore import Qt, QThread, Signal, QProcess, QProcessEnvironment, QTimer, QUrl
-from PySide6.QtGui import QPixmap, QDesktopServices, QFont, QColor, QBrush, QIcon
+from PySide6.QtCore import (Qt, QThread, Signal, QProcess, QProcessEnvironment, QTimer, QUrl,
+                            QRectF, QSize, QByteArray)
+from PySide6.QtGui import (QPixmap, QDesktopServices, QColor, QBrush, QIcon, QPainter, QPen,
+                           QConicalGradient, QFont, QImage)
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
-    QLineEdit, QPushButton, QComboBox, QFileDialog, QGroupBox, QCheckBox, QRadioButton,
-    QButtonGroup, QSpinBox, QTreeWidget, QTreeWidgetItem, QPlainTextEdit, QProgressBar,
-    QSplitter, QMessageBox, QHeaderView, QSizePolicy, QFrame, QDialog, QDialogButtonBox,
+    QLineEdit, QPushButton, QComboBox, QFileDialog, QCheckBox, QRadioButton, QButtonGroup,
+    QSpinBox, QTreeWidget, QTreeWidgetItem, QPlainTextEdit, QProgressBar, QMessageBox,
+    QHeaderView, QSizePolicy, QFrame, QDialog, QGraphicsDropShadowEffect, QScrollArea,
 )
 
 import blender_finder
@@ -45,76 +47,178 @@ APP_VERSION = read_version()
 SETTINGS_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "SCS_Batch_Render")
 SETTINGS_FILE = os.path.join(SETTINGS_DIR, "settings.json")
 
-# Mau trang thai item
-C_RENDERING = QColor("#f0c050")
-C_DONE = QColor("#6fd36f")
-C_ERROR = QColor("#ff6b6b")
-C_DIM = QColor("#6b7079")
-C_ON = QColor("#ffffff")
-C_PART = QColor("#9fc6ff")
+# ---------------------------------------------------------------------------
+# Palette
+# ---------------------------------------------------------------------------
+BG = "#f4f5fa"
+CARD = "#ffffff"
+TEXT = "#1f2333"
+SUB = "#8b90a5"
+BORDER = "#eceef5"
+PURPLE = "#7c5cff"
+ORANGE = "#ff9f43"
+BLUE = "#4c8dff"
+GREEN = "#22c08a"
+RED = "#ff5b6e"
+PINK = "#ff6fa5"
+
+C_RENDERING = QColor(ORANGE)
+C_DONE = QColor(GREEN)
+C_ERROR = QColor(RED)
+C_DIM = QColor("#b4b8c8")
+C_ON = QColor(TEXT)
+C_PART = QColor(PURPLE)
+C_NORMAL = QColor(TEXT)
 
 STYLE = """
-QWidget { background:#23262b; color:#dfe3e8; font-family:'Segoe UI'; font-size:10pt; }
-QGroupBox { border:1px solid #3a3f47; border-radius:6px; margin-top:10px; padding:8px 6px 6px 6px; font-weight:bold; }
-QGroupBox::title { subcontrol-origin: margin; left:10px; padding:0 4px; color:#8fc1ff; }
-QLineEdit, QComboBox, QSpinBox { background:#1a1c20; border:1px solid #3a3f47; border-radius:4px; padding:4px 6px; }
-QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border:1px solid #4d8fe0; }
-QComboBox QAbstractItemView { background:#1a1c20; selection-background-color:#35537a; }
-QPushButton { background:#353a42; border:1px solid #454b55; border-radius:4px; padding:5px 12px; }
-QPushButton:hover { background:#404652; }
-QPushButton:pressed { background:#2b2f36; }
-QPushButton:disabled { color:#6b7079; background:#2b2e33; }
-QPushButton#render { background:#2f7d46; border-color:#3b9658; font-weight:bold; font-size:11pt; padding:8px 18px; }
-QPushButton#render:hover { background:#379152; }
-QPushButton#stop { background:#a33a3a; border-color:#c04848; font-weight:bold; font-size:11pt; padding:8px 18px; }
-QPushButton#stop:hover { background:#bb4444; }
-QPushButton#update { background:#2d5b8c; border-color:#3a70aa; }
-QPushButton#update:hover { background:#356aa3; }
-QTreeWidget { background:#1a1c20; border:1px solid #3a3f47; border-radius:4px; alternate-background-color:#1f2126; }
-QTreeWidget::item { padding:2px; }
-QTreeWidget::item:selected { background:#35537a; }
-QHeaderView::section { background:#2b2f36; border:none; border-right:1px solid #3a3f47; padding:4px; }
-QPlainTextEdit { background:#121417; border:1px solid #3a3f47; border-radius:4px; font-family:Consolas,'Courier New'; font-size:9pt; }
-QProgressBar { background:#1a1c20; border:1px solid #3a3f47; border-radius:4px; text-align:center; height:16px; }
-QProgressBar::chunk { background:#3d8ee0; border-radius:3px; }
-QProgressBar#overall::chunk { background:#3b9658; }
-QFrame#preview { background:#15171a; border:1px solid #3a3f47; border-radius:6px; }
-QFrame#preview QLabel { background:transparent; }
-QLabel#now { font-size:13pt; font-weight:bold; color:#f0c050; }
-QLabel#title { font-size:14pt; font-weight:bold; color:#8fc1ff; }
-QLabel#dim { color:#8a8f98; }
-QSplitter::handle { background:#2b2f36; }
-QDialog { background:#23262b; }
-QFrame#hline { background:#3a3f47; border:none; }
-QPushButton#toolbar { background:transparent; border:1px solid transparent; border-radius:4px;
-    padding:5px 14px; font-weight:bold; color:#dfe3e8; }
-QPushButton#toolbar:hover { background:#353a42; border-color:#454b55; }
-QPushButton#toolbar:pressed { background:#2b2f36; }
-QPushButton#cfg { background:transparent; border:none; color:#8a8f98; padding:2px 4px; }
-QPushButton#cfg:hover { color:#8fc1ff; }
-QLabel#author { font-size:13pt; font-weight:bold; color:#f0c050; }
+* { font-family:'Segoe UI', 'Inter', sans-serif; font-size:10pt; color:#1f2333; }
+QMainWindow, QWidget#root, QDialog { background:#f4f5fa; }
+QToolTip { background:#1f2333; color:#ffffff; border:none; padding:4px 8px; }
 
-/* ---- O tich / radio: to, vien ro, tich = nen xanh + dau check trang ---- */
-QCheckBox, QRadioButton { spacing:8px; }
-QCheckBox::indicator, QTreeView::indicator {
-    width:16px; height:16px; border:2px solid #9aa3b0; border-radius:4px; background:#121417; }
-QCheckBox::indicator:hover, QTreeView::indicator:hover { border-color:#5aa0ff; background:#1b2230; }
-QCheckBox::indicator:checked, QTreeView::indicator:checked {
-    border-color:#2f80ed; background:#2f80ed; image:url(@UI@/check.svg); }
-QCheckBox::indicator:checked:hover, QTreeView::indicator:checked:hover { background:#4a93f5; border-color:#4a93f5; }
-QCheckBox::indicator:indeterminate, QTreeView::indicator:indeterminate {
-    border-color:#2f80ed; background:#1f4f8f; image:url(@UI@/partial.svg); }
-QCheckBox::indicator:disabled, QTreeView::indicator:disabled { border-color:#4a4f57; background:#202226; }
-QRadioButton::indicator { width:16px; height:16px; border:2px solid #9aa3b0; border-radius:10px; background:#121417; }
-QRadioButton::indicator:hover { border-color:#5aa0ff; }
-QRadioButton::indicator:checked { border-color:#2f80ed;
-    background:qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
-        stop:0 #2f80ed, stop:0.5 #2f80ed, stop:0.6 #121417, stop:1 #121417); }
-QRadioButton:checked, QCheckBox:checked { color:#ffffff; }
-QRadioButton#mode { font-weight:bold; padding:4px 10px; border:1px solid #3a3f47; border-radius:5px; }
-QRadioButton#mode:checked { background:#1f3550; border-color:#2f80ed; }
-QTreeView::item { padding:3px 2px; }
+/* sidebar */
+QFrame#sidebar { background:#ffffff; border-right:1px solid #eceef5; }
+QLabel#brand { font-size:12.5pt; font-weight:800; color:#1f2333; }
+QLabel#brandSub { color:#8b90a5; font-size:8.5pt; }
+QLabel#section { color:#8b90a5; font-size:8.5pt; font-weight:bold; letter-spacing:1px; }
+QPushButton#nav { background:transparent; border:none; border-radius:10px; text-align:left;
+    padding:9px 12px; color:#6b7086; font-weight:600; }
+QPushButton#nav:hover { background:#f6f4ff; color:#1f2333; }
+QPushButton#nav:checked { background:#f1edff; color:#7c5cff; }
+QFrame#recentRow { background:transparent; border-radius:8px; }
+QFrame#recentRow:hover { background:#f6f7fb; }
+QLabel#recentName { font-weight:600; font-size:9pt; }
+QLabel#recentSub { color:#8b90a5; font-size:8pt; }
+QFrame#profile { background:#f7f8fc; border-radius:12px; }
+QLabel#avatarBig { background:qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #7c5cff, stop:1 #ff9f43);
+    color:#ffffff; font-weight:800; font-size:12pt; border-radius:18px; }
+
+/* top bar */
+QLineEdit#search { background:#ffffff; border:1px solid #eceef5; border-radius:10px; padding:8px 10px; }
+QLineEdit#search:focus { border-color:#7c5cff; }
+QPushButton#iconBtn { background:#ffffff; border:1px solid #eceef5; border-radius:10px; padding:6px; }
+QPushButton#iconBtn:hover { border-color:#7c5cff; }
+QPushButton#avatar { background:qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #7c5cff, stop:1 #ff9f43);
+    color:#ffffff; font-weight:800; border:none; border-radius:17px; }
+QLabel#dot { background:#ff5b6e; border-radius:4px; }
+
+/* headings */
+QLabel#h1 { font-size:16pt; font-weight:800; }
+QLabel#h2 { font-size:11.5pt; font-weight:800; }
+QLabel#sub { color:#8b90a5; }
+QLabel#chip { background:#ffffff; border:1px solid #eceef5; border-radius:9px; padding:5px 12px; color:#6b7086; }
+
+/* cards */
+QFrame#card { background:#ffffff; border-radius:16px; }
+QFrame#stat { border-radius:14px; }
+QLabel#statValue { font-size:20pt; font-weight:800; }
+QLabel#statTitle { font-size:9pt; font-weight:700; }
+QLabel#statSub { font-size:8pt; color:#8b90a5; }
+QLabel#nowTitle { font-size:13pt; font-weight:800; }
+QLabel#thumb { background:#f4f5fa; border:1px dashed #dfe2ec; border-radius:12px; color:#b4b8c8; }
+QLabel#fieldLabel { color:#6b7086; font-weight:600; }
+
+/* inputs */
+QLineEdit, QComboBox, QSpinBox { background:#f7f8fc; border:1px solid #eceef5; border-radius:8px;
+    padding:6px 8px; selection-background-color:#7c5cff; }
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border-color:#7c5cff; background:#ffffff; }
+QComboBox::drop-down { border:none; width:22px; }
+QComboBox QAbstractItemView { background:#ffffff; border:1px solid #eceef5; selection-background-color:#f1edff;
+    selection-color:#1f2333; outline:none; }
+QSpinBox::up-button, QSpinBox::down-button { width:16px; border:none; background:transparent; }
+
+/* buttons */
+QPushButton { background:#ffffff; border:1px solid #e3e5ee; border-radius:8px; padding:6px 14px; font-weight:600; }
+QPushButton:hover { border-color:#7c5cff; color:#7c5cff; }
+QPushButton:pressed { background:#f1edff; }
+QPushButton:disabled { color:#b4b8c8; border-color:#eceef5; background:#fafbfd; }
+QPushButton#primary { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #7c5cff, stop:1 #9b7bff);
+    color:#ffffff; border:none; padding:10px 22px; font-size:10.5pt; font-weight:800; border-radius:10px; }
+QPushButton#primary:hover { background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #6a48ff, stop:1 #8a66ff); color:#ffffff; }
+QPushButton#primary:disabled { background:#d9d2ff; color:#ffffff; }
+QPushButton#danger { background:#fff0f2; color:#ff5b6e; border:1px solid #ffd0d6; padding:10px 22px;
+    font-size:10.5pt; font-weight:800; border-radius:10px; }
+QPushButton#danger:hover { background:#ff5b6e; color:#ffffff; }
+QPushButton#danger:disabled { background:#fafbfd; color:#d0d3de; border-color:#eceef5; }
+QPushButton#link { background:transparent; border:none; color:#8b90a5; padding:2px 4px; font-weight:600; }
+QPushButton#link:hover { color:#7c5cff; }
+QLabel#cfg { background:#f7f8fc; border:1px solid #eceef5; border-radius:8px; padding:7px 10px; color:#6b7086; }
+QLabel#cfg:hover { border-color:#7c5cff; color:#7c5cff; }
+QPushButton#pill { background:#f7f8fc; border:1px solid #eceef5; border-radius:14px; padding:4px 12px; font-size:9pt; }
+QPushButton#pill:hover { background:#f1edff; color:#7c5cff; border-color:#d9d0ff; }
+
+/* tree / log */
+QTreeWidget { background:#ffffff; border:none; alternate-background-color:#fafbfe; outline:none; }
+QTreeWidget::item { padding:4px 2px; border:none; }
+QTreeWidget::item:selected { background:#f1edff; color:#1f2333; }
+QHeaderView::section { background:#ffffff; border:none; border-bottom:1px solid #eceef5; padding:6px 4px;
+    color:#8b90a5; font-weight:700; font-size:9pt; }
+QPlainTextEdit#log { background:#fafbfe; border:1px solid #eceef5; border-radius:10px;
+    font-family:Consolas,'Cascadia Mono','Courier New'; font-size:9pt; color:#3d4255; }
+
+QProgressBar { background:#eef0f6; border:none; border-radius:4px; height:8px; text-align:center;
+    font-size:8pt; color:transparent; }
+QProgressBar::chunk { border-radius:4px; background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #7c5cff, stop:1 #ff9f43); }
+
+QScrollBar:vertical { background:transparent; width:10px; margin:2px; }
+QScrollBar::handle:vertical { background:#dfe2ec; border-radius:4px; min-height:30px; }
+QScrollBar::handle:vertical:hover { background:#c9ccd6; }
+QScrollBar:horizontal { background:transparent; height:10px; margin:2px; }
+QScrollBar::handle:horizontal { background:#dfe2ec; border-radius:4px; min-width:30px; }
+QScrollBar::add-line, QScrollBar::sub-line { width:0; height:0; }
+
+/* check boxes / radios */
+QCheckBox, QRadioButton { spacing:8px; font-weight:600; }
+QCheckBox::indicator, QTreeView::indicator { width:16px; height:16px; border:2px solid #c9ccd6;
+    border-radius:5px; background:#ffffff; }
+QCheckBox::indicator:hover, QTreeView::indicator:hover { border-color:#7c5cff; }
+QCheckBox::indicator:checked, QTreeView::indicator:checked { border-color:#7c5cff; background:#7c5cff;
+    image:url(@UI@/check.svg); }
+QCheckBox::indicator:indeterminate, QTreeView::indicator:indeterminate { border-color:#7c5cff;
+    background:#a995ff; image:url(@UI@/partial.svg); }
+QRadioButton#mode { background:#f7f8fc; border:1px solid #eceef5; border-radius:9px; padding:6px 12px; }
+QRadioButton#mode:checked { background:#f1edff; border-color:#7c5cff; color:#7c5cff; }
+QRadioButton#mode::indicator { width:0px; height:0px; border:none; background:transparent; image:none; }
+
+/* dialog */
+QFrame#dlgCard { background:#ffffff; border-radius:14px; }
+QLabel#author { font-size:15pt; font-weight:800; color:#7c5cff; }
 """
+
+# Simple line icons (24x24, stroke = COLOR)
+ICON_SVG = {
+    "dashboard": '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/>'
+                 '<rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
+    "folder": '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    "scan": '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/>'
+            '<path d="M8 12h8"/>',
+    "log": '<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/>'
+           '<circle cx="4" cy="18" r="1"/>',
+    "settings": '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1'
+                'a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3'
+                'l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0'
+                ' 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3'
+                'a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0'
+                '-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+    "info": '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+    "search": '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+    "bell": '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+    "image": '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/>'
+             '<path d="M21 15l-5-5L5 21"/>',
+    "play": '<path d="M7 4l13 8-13 8z"/>',
+    "stop": '<rect x="5" y="5" width="14" height="14" rx="2"/>',
+    "update": '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
+}
+
+
+def make_icon(name, color=SUB, size=20):
+    body = ICON_SVG.get(name, "")
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{color}" '
+           f'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{body}</svg>')
+    pm = QPixmap()
+    pm.loadFromData(QByteArray(svg.encode("utf-8")), "SVG")
+    if not pm.isNull() and pm.width() != size * 2:
+        pm = pm.scaled(size * 2, size * 2, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    return QIcon(pm)
 
 
 def build_style():
@@ -159,6 +263,160 @@ def kill_tree(pid):
             pass
 
 
+def shadow(widget, blur=28, alpha=22, dy=6):
+    eff = QGraphicsDropShadowEffect(widget)
+    eff.setBlurRadius(blur)
+    eff.setOffset(0, dy)
+    eff.setColor(QColor(40, 45, 80, alpha))
+    widget.setGraphicsEffect(eff)
+
+
+# ---------------------------------------------------------------------------
+# Custom widgets
+# ---------------------------------------------------------------------------
+class Card(QFrame):
+    """White rounded panel with optional title row."""
+
+    def __init__(self, title=None, subtitle=None):
+        super().__init__()
+        self.setObjectName("card")
+        shadow(self)
+        self.lay = QVBoxLayout(self)
+        self.lay.setContentsMargins(18, 16, 18, 16)
+        self.lay.setSpacing(10)
+        self.head = QHBoxLayout()
+        self.head.setSpacing(8)
+        if title:
+            col = QVBoxLayout()
+            col.setSpacing(0)
+            t = QLabel(title)
+            t.setObjectName("h2")
+            col.addWidget(t)
+            if subtitle:
+                self.subtitle = QLabel(subtitle)
+                self.subtitle.setObjectName("sub")
+                col.addWidget(self.subtitle)
+            self.head.addLayout(col)
+            self.head.addStretch(1)
+            self.lay.addLayout(self.head)
+
+
+class StatCard(QFrame):
+    def __init__(self, title, bg, accent):
+        super().__init__()
+        self.setObjectName("stat")
+        self.setStyleSheet(f"QFrame#stat {{ background:{bg}; }}")
+        self.setMinimumHeight(104)
+        v = QVBoxLayout(self)
+        v.setContentsMargins(14, 12, 14, 12)
+        v.setSpacing(2)
+        v.addStretch(1)
+        self.value = QLabel("0")
+        self.value.setObjectName("statValue")
+        self.value.setAlignment(Qt.AlignCenter)
+        self.value.setStyleSheet(f"color:{TEXT};")
+        v.addWidget(self.value)
+        t = QLabel(title)
+        t.setObjectName("statTitle")
+        t.setAlignment(Qt.AlignCenter)
+        t.setStyleSheet(f"color:{accent};")
+        v.addWidget(t)
+        self.sub = QLabel("")
+        self.sub.setObjectName("statSub")
+        self.sub.setAlignment(Qt.AlignCenter)
+        v.addWidget(self.sub)
+        v.addStretch(1)
+
+    def set(self, value, sub=None):
+        self.value.setText(str(value))
+        if sub is not None:
+            self.sub.setText(sub)
+
+
+class Ring(QWidget):
+    """Circular progress (gradient arc) with centre text."""
+
+    def __init__(self, size=150, width=12, colors=(PURPLE, ORANGE), font_px=None):
+        super().__init__()
+        self.setFixedSize(size, size)
+        self.width_ = width
+        self.colors = colors
+        self.frac = 0.0
+        self.text = "0"
+        self.caption = ""
+        self.font_px = font_px or int(size * 0.2)
+
+    def set_value(self, frac, text=None, caption=None):
+        self.frac = max(0.0, min(1.0, frac))
+        if text is not None:
+            self.text = text
+        if caption is not None:
+            self.caption = caption
+        self.update()
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w = self.width_
+        r = QRectF(w / 2 + 2, w / 2 + 2, self.width() - w - 4, self.height() - w - 4)
+        pen = QPen(QColor("#eef0f6"), w)
+        pen.setCapStyle(Qt.RoundCap)
+        p.setPen(pen)
+        p.drawArc(r, 0, 360 * 16)
+        if self.frac > 0:
+            g = QConicalGradient(r.center(), 90)
+            g.setColorAt(0.0, QColor(self.colors[0]))
+            g.setColorAt(1.0, QColor(self.colors[-1]))
+            pen = QPen(QBrush(g), w)
+            pen.setCapStyle(Qt.RoundCap)
+            p.setPen(pen)
+            p.drawArc(r, 90 * 16, -int(self.frac * 360 * 16))
+        p.setPen(QColor(TEXT))
+        f = QFont(self.font())
+        f.setPixelSize(self.font_px)
+        f.setBold(True)
+        p.setFont(f)
+        tr = QRectF(r)
+        if self.caption:
+            tr.setHeight(r.height() * 0.62)
+            p.drawText(tr, Qt.AlignHCenter | Qt.AlignBottom, self.text)
+            f2 = QFont(self.font())
+            f2.setPixelSize(max(9, int(self.font_px * 0.45)))
+            p.setFont(f2)
+            p.setPen(QColor(SUB))
+            cr = QRectF(r.left(), r.top() + r.height() * 0.62, r.width(), r.height() * 0.3)
+            p.drawText(cr, Qt.AlignHCenter | Qt.AlignTop, self.caption)
+        else:
+            p.drawText(tr, Qt.AlignCenter, self.text)
+        p.end()
+
+
+class Donut(QWidget):
+    """Small ring + label + value (like 'Leads Summary')."""
+
+    def __init__(self, title, color):
+        super().__init__()
+        h = QHBoxLayout(self)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(8)
+        self.ring = Ring(40, 6, (color, color), font_px=11)
+        h.addWidget(self.ring)
+        v = QVBoxLayout()
+        v.setSpacing(0)
+        t = QLabel(title)
+        t.setObjectName("sub")
+        t.setStyleSheet("font-size:8.5pt;")
+        v.addWidget(t)
+        self.val = QLabel("0")
+        self.val.setStyleSheet("font-size:12pt; font-weight:800;")
+        v.addWidget(self.val)
+        h.addLayout(v)
+
+    def set(self, count, total):
+        self.val.setText(str(count))
+        self.ring.set_value(count / total if total else 0, "")
+
+
 # ---------------------------------------------------------------------------
 # Background threads
 # ---------------------------------------------------------------------------
@@ -173,7 +431,7 @@ class FindBlenderThread(QThread):
 
 
 class UpdateCheckThread(QThread):
-    result = Signal(dict, str)   # info, error
+    result = Signal(dict, str)
 
     def run(self):
         try:
@@ -202,15 +460,19 @@ class UpdateInstallThread(QThread):
 # Main window
 # ---------------------------------------------------------------------------
 class MainWindow(QMainWindow):
+    RE_SAMPLE = re.compile(r"Sample (\d+)/(\d+)")
+    RE_REMAIN = re.compile(r"Remaining:\s*([\d:.]+)")
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME}  v{APP_VERSION}")
-        self.resize(1280, 860)
+        self.resize(1460, 940)
+        self.setMinimumSize(1180, 760)
         self.setAcceptDrops(True)
 
         self.settings = load_settings()
         self.proc = None
-        self.proc_mode = None          # "scan" | "render"
+        self.proc_mode = None
         self.proc_buffer = ""
         self.scan_json_path = None
         self.select_json_path = None
@@ -220,12 +482,15 @@ class MainWindow(QMainWindow):
         self.render_start = 0.0
         self.item_start = 0.0
         self.done_count = 0
+        self.error_count = 0
         self.done_secs = []
         self.total = 0
         self.threads = []
         self.finish_info = None
         self.item_remaining = ""
         self.last_paths = {}
+        self.last_image = None
+        self.recent = []
 
         self._build_ui()
         self._load_into_ui()
@@ -238,8 +503,8 @@ class MainWindow(QMainWindow):
         if self.settings.get("auto_check_update", True):
             QTimer.singleShot(1500, lambda: self.check_update(silent=True))
 
-    # ------------------------------------------------------------------ UI
-    def _btn(self, text, slot=None, obj_name=None, tip=None):
+    # ================================================================== UI
+    def _btn(self, text, slot=None, obj_name=None, tip=None, icon=None, icon_color=None):
         b = QPushButton(text)
         if obj_name:
             b.setObjectName(obj_name)
@@ -247,335 +512,625 @@ class MainWindow(QMainWindow):
             b.clicked.connect(slot)
         if tip:
             b.setToolTip(tip)
+        if icon:
+            b.setIcon(make_icon(icon, icon_color or SUB))
+            b.setIconSize(QSize(16, 16))
+        b.setCursor(Qt.PointingHandCursor)
         return b
 
     def _build_ui(self):
         root = QWidget()
+        root.setObjectName("root")
         self.setCentralWidget(root)
-        main = QVBoxLayout(root)
-        main.setContentsMargins(10, 8, 10, 8)
+        outer = QHBoxLayout(root)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        # --- thanh cong cu ngang (tren cung ben trai): Setting | Info
-        bar = QHBoxLayout()
-        bar.setSpacing(2)
-        self.btn_setting = self._btn("⚙  Setting", self.open_settings, "toolbar", "Blender.exe, size ảnh")
-        self.btn_info = self._btn("ⓘ  Info", self.open_info, "toolbar", "Thông tin app & Update")
-        bar.addWidget(self.btn_setting)
-        bar.addWidget(self.btn_info)
-        bar.addStretch(1)
-        t = QLabel("SCS BATCH RENDER")
-        t.setObjectName("title")
-        bar.addWidget(t)
-        self.lbl_ver = QLabel(f"v{APP_VERSION}")
-        self.lbl_ver.setObjectName("dim")
-        bar.addWidget(self.lbl_ver)
-        main.addLayout(bar)
-        line = QFrame()
-        line.setObjectName("hline")
-        line.setFixedHeight(1)
-        main.addWidget(line)
+        outer.addWidget(self._build_sidebar())
+
+        content = QWidget()
+        cv = QVBoxLayout(content)
+        cv.setContentsMargins(24, 16, 24, 18)
+        cv.setSpacing(14)
+        cv.addLayout(self._build_topbar())
+
+        # heading
+        hrow = QHBoxLayout()
+        col = QVBoxLayout()
+        col.setSpacing(0)
+        h = QLabel("Render Overview")
+        h.setObjectName("h1")
+        col.addWidget(h)
+        self.lbl_status = QLabel("Ready.")
+        self.lbl_status.setObjectName("sub")
+        col.addWidget(self.lbl_status)
+        hrow.addLayout(col)
+        hrow.addStretch(1)
+        self.lbl_file_chip = QLabel("No .blend loaded")
+        self.lbl_file_chip.setObjectName("chip")
+        hrow.addWidget(self.lbl_file_chip)
+        cv.addLayout(hrow)
+
+        # stat cards
+        stats = QHBoxLayout()
+        stats.setSpacing(14)
+        self.st_total = StatCard("Images In Scene", "#eaf3ff", BLUE)
+        self.st_selected = StatCard("Selected To Render", "#fff3e6", ORANGE)
+        self.st_done = StatCard("Rendered", "#f1edff", PURPLE)
+        self.st_time = StatCard("Elapsed Time", "#ffeef2", PINK)
+        for c in (self.st_total, self.st_selected, self.st_done, self.st_time):
+            stats.addWidget(c)
+        self.st_total.set("0", "Scan a scene to count")
+        self.st_selected.set("0", "Mode: render all")
+        self.st_done.set("0 / 0", "No errors")
+        self.st_time.set("00:00", "ETA --:--")
+        cv.addLayout(stats)
+
+        # middle row: project | now rendering
+        mid = QHBoxLayout()
+        mid.setSpacing(14)
+        mid.addWidget(self._build_project_card(), 5)
+        mid.addWidget(self._build_now_card(), 6)
+        cv.addLayout(mid)
+
+        # bottom row: scene items | log
+        bot = QHBoxLayout()
+        bot.setSpacing(14)
+        bot.addWidget(self._build_items_card(), 11)
+        bot.addWidget(self._build_log_card(), 9)
+        cv.addLayout(bot, 1)
+
+        outer.addWidget(content, 1)
 
         self._build_settings_dialog()
         self._build_info_dialog()
 
-        # --- paths
-        g = QGroupBox("Đường dẫn")
-        grid = QGridLayout(g)
-        grid.setColumnStretch(1, 1)
+    # ------------------------------------------------------------------ sidebar
+    def _build_sidebar(self):
+        sb = QFrame()
+        sb.setObjectName("sidebar")
+        sb.setFixedWidth(236)
+        v = QVBoxLayout(sb)
+        v.setContentsMargins(16, 18, 16, 16)
+        v.setSpacing(4)
 
-        grid.addWidget(QLabel("File .blend:"), 1, 0)
+        brand = QHBoxLayout()
+        logo = QLabel()
+        ico = os.path.join(APP_DIR, "ui", "icon.png")
+        if os.path.isfile(ico):
+            logo.setPixmap(QPixmap(ico).scaled(34, 34, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        brand.addWidget(logo)
+        bc = QVBoxLayout()
+        bc.setSpacing(0)
+        b1 = QLabel("SCS RENDER")
+        b1.setObjectName("brand")
+        bc.addWidget(b1)
+        b2 = QLabel(f"Batch tool  ·  v{APP_VERSION}")
+        b2.setObjectName("brandSub")
+        bc.addWidget(b2)
+        brand.addLayout(bc)
+        brand.addStretch(1)
+        v.addLayout(brand)
+        v.addSpacing(18)
+
+        self.nav_buttons = {}
+
+        def nav(key, text, icon, slot, checkable=False):
+            b = self._btn("  " + text, slot, "nav", icon=icon)
+            b.setIconSize(QSize(18, 18))
+            b.setCheckable(checkable)
+            b.setProperty("icon_name", icon)
+            self.nav_buttons[key] = b
+            v.addWidget(b)
+            return b
+
+        nav("dash", "Dashboard", "dashboard", lambda: None, checkable=True).setChecked(True)
+        nav("scan", "Scan Scene", "scan", lambda: self.start_scan())
+        nav("out", "Output Folder", "folder", lambda: self.open_out())
+        nav("log", "Save Render Log", "log", lambda: self.save_log())
+        nav("settings", "Settings", "settings", lambda: self.open_settings())
+        nav("info", "Info", "info", lambda: self.open_info())
+        self.nav_buttons["dash"].setIcon(make_icon("dashboard", PURPLE))
+
+        v.addSpacing(16)
+        rh = QHBoxLayout()
+        sec = QLabel("RECENT RENDERS")
+        sec.setObjectName("section")
+        rh.addWidget(sec)
+        rh.addStretch(1)
+        v.addLayout(rh)
+        self.recent_box = QVBoxLayout()
+        self.recent_box.setSpacing(2)
+        self.lbl_recent_empty = QLabel("Nothing rendered yet.")
+        self.lbl_recent_empty.setObjectName("recentSub")
+        self.recent_box.addWidget(self.lbl_recent_empty)
+        v.addLayout(self.recent_box)
+        v.addStretch(1)
+
+        prof = QFrame()
+        prof.setObjectName("profile")
+        prof.setCursor(Qt.PointingHandCursor)
+        ph = QHBoxLayout(prof)
+        ph.setContentsMargins(10, 10, 10, 10)
+        av = QLabel(APP_AUTHOR[:1].upper())
+        av.setObjectName("avatarBig")
+        av.setFixedSize(36, 36)
+        av.setAlignment(Qt.AlignCenter)
+        ph.addWidget(av)
+        pc = QVBoxLayout()
+        pc.setSpacing(0)
+        n = QLabel(APP_AUTHOR)
+        n.setStyleSheet("font-weight:800;")
+        pc.addWidget(n)
+        r = QLabel("App Creator")
+        r.setObjectName("recentSub")
+        pc.addWidget(r)
+        ph.addLayout(pc)
+        ph.addStretch(1)
+        prof.mousePressEvent = lambda e: self.open_info()
+        v.addWidget(prof)
+        return sb
+
+    def _add_recent(self, path, sec):
+        if not path or not os.path.isfile(path):
+            return
+        self.recent.insert(0, (path, sec))
+        self.recent = self.recent[:4]
+        self.lbl_recent_empty.hide()
+        while self.recent_box.count() > 1:
+            it = self.recent_box.takeAt(1)
+            if it.widget():
+                it.widget().deleteLater()
+        for p, s in self.recent:
+            row = QFrame()
+            row.setObjectName("recentRow")
+            row.setCursor(Qt.PointingHandCursor)
+            h = QHBoxLayout(row)
+            h.setContentsMargins(6, 5, 6, 5)
+            h.setSpacing(8)
+            th = QLabel()
+            th.setFixedSize(34, 34)
+            th.setStyleSheet("background:#f4f5fa; border-radius:8px;")
+            pm = QPixmap(p)
+            if not pm.isNull():
+                th.setPixmap(pm.scaled(34, 34, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                th.setAlignment(Qt.AlignCenter)
+            h.addWidget(th)
+            c = QVBoxLayout()
+            c.setSpacing(0)
+            nm = QLabel(self._elide(os.path.splitext(os.path.basename(p))[0], 22))
+            nm.setObjectName("recentName")
+            nm.setToolTip(p)
+            c.addWidget(nm)
+            sb = QLabel(f"{s}s  ·  {time.strftime('%H:%M')}")
+            sb.setObjectName("recentSub")
+            c.addWidget(sb)
+            h.addLayout(c, 1)
+            row.mousePressEvent = lambda e, p=p: QDesktopServices.openUrl(QUrl.fromLocalFile(p))
+            self.recent_box.addWidget(row)
+
+    @staticmethod
+    def _elide(text, n):
+        return text if len(text) <= n else text[: n - 1] + "…"
+
+    # ------------------------------------------------------------------ topbar
+    def _build_topbar(self):
+        bar = QHBoxLayout()
+        bar.setSpacing(10)
+        self.ed_search = QLineEdit()
+        self.ed_search.setObjectName("search")
+        self.ed_search.setPlaceholderText("Search scene items...")
+        self.ed_search.addAction(make_icon("search", SUB), QLineEdit.LeadingPosition)
+        self.ed_search.setClearButtonEnabled(True)
+        self.ed_search.setMaximumWidth(420)
+        self.ed_search.textChanged.connect(self.apply_filter)
+        bar.addWidget(self.ed_search, 1)
+        bar.addStretch(1)
+
+        self.cmb_filter = QComboBox()
+        self.cmb_filter.addItems(["Filter: All items", "Scs only", "Icon only", "Custom only",
+                                  "Maps only", "Objects only"])
+        self.cmb_filter.setMinimumWidth(170)
+        self.cmb_filter.currentIndexChanged.connect(self.apply_filter)
+        bar.addWidget(self.cmb_filter)
+
+        bell_wrap = QWidget()
+        bell_wrap.setFixedSize(40, 38)
+        self.btn_bell = self._btn("", self.open_info, "iconBtn", "Updates", icon="bell")
+        self.btn_bell.setParent(bell_wrap)
+        self.btn_bell.setGeometry(0, 2, 36, 36)
+        self.btn_bell.setIconSize(QSize(18, 18))
+        self.dot = QLabel(bell_wrap)
+        self.dot.setObjectName("dot")
+        self.dot.setGeometry(27, 2, 9, 9)
+        self.dot.hide()
+        bar.addWidget(bell_wrap)
+
+        self.btn_avatar = self._btn(APP_AUTHOR[:1].upper(), self.open_info, "avatar", f"Created by {APP_AUTHOR}")
+        self.btn_avatar.setFixedSize(34, 34)
+        bar.addWidget(self.btn_avatar)
+        return bar
+
+    # ------------------------------------------------------------------ project card
+    def _build_project_card(self):
+        card = Card("Project", "Blender file, output and render options")
+        g = QGridLayout()
+        g.setHorizontalSpacing(8)
+        g.setVerticalSpacing(8)
+        g.setColumnStretch(1, 1)
+
+        lb = QLabel("Blend file")
+        lb.setObjectName("fieldLabel")
+        g.addWidget(lb, 0, 0)
         self.ed_blend = QLineEdit()
-        self.ed_blend.setPlaceholderText("Kéo thả file .blend đã setup vào cửa sổ, hoặc bấm Chọn...")
-        grid.addWidget(self.ed_blend, 1, 1)
-        row = QHBoxLayout()
-        row.addWidget(self._btn("Chọn...", self.browse_blend))
-        self.btn_scan = self._btn("Quét scene", self.start_scan, tip="Đọc file .blend, liệt kê Scs_N / Icon_N")
-        row.addWidget(self.btn_scan)
-        grid.addLayout(row, 1, 2)
+        self.ed_blend.setPlaceholderText("Drop your prepared .blend here or click Browse")
+        g.addWidget(self.ed_blend, 0, 1)
+        g.addWidget(self._btn("Browse", self.browse_blend), 0, 2)
+        self.btn_scan = self._btn("Scan", self.start_scan, tip="Read the .blend and list Scs_N / Icon_N",
+                                  icon="scan")
+        g.addWidget(self.btn_scan, 0, 3)
 
-        grid.addWidget(QLabel("Thư mục lưu ảnh:"), 2, 0)
+        lo = QLabel("Output folder")
+        lo.setObjectName("fieldLabel")
+        g.addWidget(lo, 1, 0)
         self.ed_out = QLineEdit()
-        self.ed_out.setPlaceholderText("Thư mục xuất ảnh PNG")
-        grid.addWidget(self.ed_out, 2, 1)
-        row = QHBoxLayout()
-        row.addWidget(self._btn("Chọn...", self.browse_out))
-        row.addWidget(self._btn("Mở", self.open_out))
-        grid.addLayout(row, 2, 2)
+        self.ed_out.setPlaceholderText("Folder for the PNG images")
+        g.addWidget(self.ed_out, 1, 1)
+        g.addWidget(self._btn("Browse", self.browse_out), 1, 2)
+        g.addWidget(self._btn("Open", self.open_out, icon="folder"), 1, 3)
+        card.lay.addLayout(g)
 
-        opt = QHBoxLayout()
-        self.chk_gpu = QCheckBox("Ép dùng GPU (Cycles)")
-        opt.addWidget(self.chk_gpu)
-        opt.addSpacing(20)
-        opt.addWidget(QLabel("Start frame:"))
-        self.sp_frame = QSpinBox()
-        self.sp_frame.setRange(-100000, 100000)
-        self.sp_frame.setValue(2)
-        self.sp_frame.setToolTip("Frame của collection số N = Start + (N-1)")
-        opt.addWidget(self.sp_frame)
-        opt.addStretch(1)
-        self.btn_cfg = self._btn("", self.open_settings, "cfg", "Bấm để mở ⚙ Setting")
-        opt.addWidget(self.btn_cfg)
-        grid.addLayout(opt, 3, 0, 1, 3)
-        main.addWidget(g)
+        cl = QLabel("Render settings")
+        cl.setObjectName("fieldLabel")
+        card.lay.addWidget(cl)
+        self.btn_cfg = QLabel("")
+        self.btn_cfg.setObjectName("cfg")
+        self.btn_cfg.setWordWrap(True)
+        self.btn_cfg.setCursor(Qt.PointingHandCursor)
+        self.btn_cfg.setToolTip("Click to change in Settings")
+        self.btn_cfg.mousePressEvent = lambda e: self.open_settings()
+        card.lay.addWidget(self.btn_cfg)
+        card.lay.addStretch(1)
 
-        # --- middle: tree | preview
-        split = QSplitter(Qt.Vertical)
-        mid = QSplitter(Qt.Horizontal)
+        btns = QHBoxLayout()
+        btns.setSpacing(10)
+        self.btn_render = self._btn("  Start Render", self.start_render, "primary", icon="play", icon_color="#ffffff")
+        self.btn_stop = self._btn("  Stop Now", self.stop_now, "danger", icon="stop", icon_color=RED)
+        self.btn_stop.setEnabled(False)
+        btns.addWidget(self.btn_render, 3)
+        btns.addWidget(self.btn_stop, 2)
+        card.lay.addLayout(btns)
+        return card
 
-        left = QGroupBox("Danh sách trong scene")
-        lv = QVBoxLayout(left)
-        self.lbl_summary = QLabel("Chưa quét scene.")
-        self.lbl_summary.setWordWrap(True)
-        lv.addWidget(self.lbl_summary)
+    # ------------------------------------------------------------------ now rendering card
+    def _build_now_card(self):
+        card = Card("Now Rendering", "Live progress of the current batch")
+        h = QHBoxLayout()
+        h.setSpacing(18)
+
+        self.ring = Ring(140, 13)
+        self.ring.set_value(0, "0/0", "images")
+        h.addWidget(self.ring, 0, Qt.AlignVCenter)
+
+        info = QVBoxLayout()
+        info.setSpacing(6)
+        self.lbl_now = QLabel("Idle")
+        self.lbl_now.setObjectName("nowTitle")
+        self.lbl_now.setWordWrap(True)
+        info.addWidget(self.lbl_now)
+        self.lbl_now_info = QLabel("Press Start Render to begin.")
+        self.lbl_now_info.setObjectName("sub")
+        self.lbl_now_info.setWordWrap(True)
+        info.addWidget(self.lbl_now_info)
+        info.addSpacing(4)
+        sl = QHBoxLayout()
+        a = QLabel("Current image")
+        a.setObjectName("fieldLabel")
+        sl.addWidget(a)
+        sl.addStretch(1)
+        self.lbl_sample = QLabel("")
+        self.lbl_sample.setObjectName("sub")
+        sl.addWidget(self.lbl_sample)
+        info.addLayout(sl)
+        self.pb_item = QProgressBar()
+        self.pb_item.setRange(0, 100)
+        self.pb_item.setValue(0)
+        self.pb_item.setFixedHeight(8)
+        info.addWidget(self.pb_item)
+        self.lbl_time = QLabel("")
+        self.lbl_time.setObjectName("sub")
+        self.lbl_time.setWordWrap(True)
+        info.addWidget(self.lbl_time)
+        info.addStretch(1)
+        h.addLayout(info, 1)
+
+        tv = QVBoxLayout()
+        tv.setSpacing(4)
+        self.img = QLabel("No image yet")
+        self.img.setObjectName("thumb")
+        self.img.setAlignment(Qt.AlignCenter)
+        self.img.setFixedSize(200, 150)
+        self.img.setCursor(Qt.PointingHandCursor)
+        self.img.mousePressEvent = lambda e: self.open_last_image()
+        tv.addWidget(self.img)
+        self.lbl_img = QLabel("Last finished image")
+        self.lbl_img.setObjectName("sub")
+        self.lbl_img.setAlignment(Qt.AlignCenter)
+        self.lbl_img.setFixedWidth(200)
+        tv.addWidget(self.lbl_img)
+        h.addLayout(tv)
+
+        card.lay.addLayout(h)
+        return card
+
+    # ------------------------------------------------------------------ scene items card
+    def _build_items_card(self):
+        card = Card("Scene Items", "Collections and images found in the .blend")
+        self.items_card = card
+        self.d_scs = Donut("Scs", BLUE)
+        self.d_icon = Donut("Icon", ORANGE)
+        self.d_custom = Donut("Custom", PINK)
+        for d in (self.d_scs, self.d_icon, self.d_custom):
+            card.head.addWidget(d)
+            card.head.addSpacing(6)
 
         mode = QHBoxLayout()
-        self.rb_all = QRadioButton("Render tất cả")
-        self.rb_checked = QRadioButton("Chỉ render mục được tích")
+        mode.setSpacing(6)
+        self.rb_all = QRadioButton("Render all")
+        self.rb_checked = QRadioButton("Checked only")
+        for rb in (self.rb_all, self.rb_checked):
+            rb.setObjectName("mode")
+            rb.setCursor(Qt.PointingHandCursor)
         self.mode_group = QButtonGroup(self)
         self.mode_group.addButton(self.rb_all)
         self.mode_group.addButton(self.rb_checked)
-        self.rb_all.setObjectName("mode")
-        self.rb_checked.setObjectName("mode")
         self.rb_all.setChecked(True)
-        self.rb_all.toggled.connect(self._update_tree_enabled)
+        self.rb_all.toggled.connect(lambda *_: self._update_stats())
         mode.addWidget(self.rb_all)
         mode.addWidget(self.rb_checked)
+        mode.addSpacing(10)
+        for text, slot in (("Select all", lambda: self.set_all_checked(True)),
+                           ("None", lambda: self.set_all_checked(False)),
+                           ("Scs only", lambda: self.check_prefix("Scs")),
+                           ("Icon only", lambda: self.check_prefix("Icon")),
+                           ("Expand / Collapse", self.toggle_expand)):
+            mode.addWidget(self._btn(text, slot, "pill"))
         mode.addStretch(1)
-        lv.addLayout(mode)
-
-        tb = QHBoxLayout()
-        tb.addWidget(self._btn("Tích hết", lambda: self.set_all_checked(True)))
-        tb.addWidget(self._btn("Bỏ hết", lambda: self.set_all_checked(False)))
-        tb.addWidget(self._btn("Chỉ Scs", lambda: self.check_prefix("Scs")))
-        tb.addWidget(self._btn("Chỉ Icon", lambda: self.check_prefix("Icon")))
-        tb.addWidget(self._btn("Mở rộng/Thu gọn", self.toggle_expand))
-        tb.addStretch(1)
-        lv.addLayout(tb)
+        card.lay.addLayout(mode)
 
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Tên", "Loại", "Trạng thái"])
+        self.tree.setHeaderLabels(["Name", "Type", "Status"])
         self.tree.setAlternatingRowColors(True)
         self.tree.header().setSectionResizeMode(0, QHeaderView.Stretch)
         self.tree.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.tree.header().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.tree.itemChanged.connect(self._on_tree_changed)
         self.tree.itemDoubleClicked.connect(self._on_tree_double)
-        lv.addWidget(self.tree, 1)
-        self.lbl_selected = QLabel("")
-        self.lbl_selected.setObjectName("dim")
-        lv.addWidget(self.lbl_selected)
-        mid.addWidget(left)
+        card.lay.addWidget(self.tree, 1)
 
-        right = QGroupBox("Đang render")
-        rv = QVBoxLayout(right)
-        frame = QFrame()
-        frame.setObjectName("preview")
-        fv = QVBoxLayout(frame)
-        self.lbl_now = QLabel("— Chưa chạy —")
-        self.lbl_now.setObjectName("now")
-        self.lbl_now.setWordWrap(True)
-        fv.addWidget(self.lbl_now)
-        self.lbl_now_info = QLabel("")
-        self.lbl_now_info.setObjectName("dim")
-        self.lbl_now_info.setWordWrap(True)
-        fv.addWidget(self.lbl_now_info)
+        foot = QHBoxLayout()
+        self.lbl_selected = QLabel("No scene scanned yet.")
+        self.lbl_selected.setObjectName("sub")
+        foot.addWidget(self.lbl_selected)
+        foot.addStretch(1)
+        self.lbl_scene = QLabel("")
+        self.lbl_scene.setObjectName("sub")
+        foot.addWidget(self.lbl_scene)
+        card.lay.addLayout(foot)
+        return card
 
-        fv.addWidget(QLabel("Ảnh hiện tại (sample):"))
-        self.pb_item = QProgressBar()
-        self.pb_item.setRange(0, 100)
-        self.pb_item.setValue(0)
-        fv.addWidget(self.pb_item)
-        fv.addWidget(QLabel("Tổng:"))
-        self.pb_all = QProgressBar()
-        self.pb_all.setObjectName("overall")
-        self.pb_all.setRange(0, 1)
-        self.pb_all.setValue(0)
-        self.pb_all.setFormat("%v / %m")
-        fv.addWidget(self.pb_all)
-        self.lbl_time = QLabel("")
-        self.lbl_time.setObjectName("dim")
-        fv.addWidget(self.lbl_time)
-
-        fv.addWidget(QLabel("Ảnh vừa xong:"))
-        self.img = QLabel("(chưa có)")
-        self.img.setAlignment(Qt.AlignCenter)
-        self.img.setMinimumSize(300, 220)
-        self.img.setStyleSheet("background:#0e0f11; border:1px solid #3a3f47; border-radius:4px;")
-        self.img.setCursor(Qt.PointingHandCursor)
-        self.img.mousePressEvent = lambda e: self.open_last_image()
-        fv.addWidget(self.img, 1)
-        self.lbl_img = QLabel("")
-        self.lbl_img.setObjectName("dim")
-        self.lbl_img.setWordWrap(True)
-        fv.addWidget(self.lbl_img)
-        rv.addWidget(frame)
-        mid.addWidget(right)
-        mid.setSizes([700, 420])
-        split.addWidget(mid)
-
-        logbox = QGroupBox("Log")
-        lb = QVBoxLayout(logbox)
+    # ------------------------------------------------------------------ log card
+    def _build_log_card(self):
+        card = Card("Render Log", "Blender output")
+        card.head.addWidget(self._btn("Save", self.save_log, "pill"))
+        card.head.addWidget(self._btn("Clear", lambda: self.log.clear(), "pill"))
         self.log = QPlainTextEdit()
+        self.log.setObjectName("log")
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(30000)
-        lb.addWidget(self.log)
-        lrow = QHBoxLayout()
-        self.chk_verbose = QCheckBox("Hiện cả dòng sample của Blender")
-        lrow.addWidget(self.chk_verbose)
-        lrow.addStretch(1)
-        lrow.addWidget(self._btn("Lưu log...", self.save_log))
-        lrow.addWidget(self._btn("Xóa log", self.log.clear))
-        lb.addLayout(lrow)
-        split.addWidget(logbox)
-        split.setSizes([520, 260])
-        main.addWidget(split, 1)
+        card.lay.addWidget(self.log, 1)
+        self.chk_verbose = QCheckBox("Show Blender sample lines")
+        card.lay.addWidget(self.chk_verbose)
+        return card
 
-        # --- bottom buttons
-        bot = QHBoxLayout()
-        self.lbl_status = QLabel("Sẵn sàng.")
-        bot.addWidget(self.lbl_status, 1)
-        self.btn_render = self._btn("▶  RENDER", self.start_render, "render")
-        self.btn_stop = self._btn("■  DỪNG NGAY", self.stop_now, "stop")
-        self.btn_stop.setEnabled(False)
-        bot.addWidget(self.btn_render)
-        bot.addWidget(self.btn_stop)
-        main.addLayout(bot)
-
-        self.last_image = None
-
-    # ------------------------------------------------------------------ popups
+    # ================================================================== dialogs
     def _size_spin(self, val):
         sp = QSpinBox()
         sp.setRange(16, 16384)
         sp.setSingleStep(2)
         sp.setValue(val)
         sp.setSuffix(" px")
-        sp.setMinimumWidth(110)
+        sp.setMinimumWidth(120)
         sp.valueChanged.connect(self._on_size_changed)
         return sp
 
-    def _build_settings_dialog(self):
+    def _dialog(self, title, width):
         dlg = QDialog(self)
-        dlg.setWindowTitle("⚙  Setting")
-        dlg.setMinimumWidth(720)
-        v = QVBoxLayout(dlg)
-        v.setSpacing(10)
+        dlg.setWindowTitle(title)
+        dlg.setMinimumWidth(width)
+        outer = QVBoxLayout(dlg)
+        outer.setContentsMargins(18, 18, 18, 18)
+        outer.setSpacing(14)
+        return dlg, outer
 
-        gb = QGroupBox("Blender.exe")
-        gl = QGridLayout(gb)
-        gl.setColumnStretch(0, 1)
+    def _dlg_card(self, title):
+        f = QFrame()
+        f.setObjectName("dlgCard")
+        shadow(f, 20, 16, 4)
+        v = QVBoxLayout(f)
+        v.setContentsMargins(16, 14, 16, 14)
+        v.setSpacing(10)
+        t = QLabel(title)
+        t.setObjectName("h2")
+        v.addWidget(t)
+        return f, v
+
+    def _build_settings_dialog(self):
+        dlg, outer = self._dialog("Settings", 780)
+        dlg.setMinimumHeight(560)
+
+        f, v = self._dlg_card("Blender executable")
+        row = QHBoxLayout()
         self.cmb_blender = QComboBox()
         self.cmb_blender.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.cmb_blender.setToolTip("Tự động dò các bản Blender trong máy (registry, Program Files, Steam, PATH...)")
+        self.cmb_blender.setToolTip("Blender installs found automatically (registry, Program Files, Steam, PATH...)")
         self.cmb_blender.currentIndexChanged.connect(lambda *_: self._refresh_cfg_label())
-        gl.addWidget(self.cmb_blender, 0, 0)
-        self.btn_find = self._btn("Dò lại", self.find_blenders)
-        gl.addWidget(self.btn_find, 0, 1)
-        gl.addWidget(self._btn("Chọn...", self.browse_blender), 0, 2)
-        hint = QLabel("App tự dò Blender trong máy (registry, Program Files, Steam, PATH...). "
-                      "Danh sách xếp bản mới nhất lên đầu; bấm Chọn... nếu không thấy bản bạn cần.")
-        hint.setObjectName("dim")
+        row.addWidget(self.cmb_blender, 1)
+        self.btn_find = self._btn("Detect again", self.find_blenders, icon="scan")
+        row.addWidget(self.btn_find)
+        row.addWidget(self._btn("Browse...", self.browse_blender))
+        v.addLayout(row)
+        hint = QLabel("Blender is detected automatically and the newest version is listed first. "
+                      "Use Browse... if your version is not in the list.")
+        hint.setObjectName("sub")
         hint.setWordWrap(True)
-        gl.addWidget(hint, 1, 0, 1, 3)
-        v.addWidget(gb)
+        v.addWidget(hint)
+        outer.addWidget(f)
 
-        gs = QGroupBox("Size ảnh xuất ra")
-        g = QGridLayout(gs)
-        g.addWidget(QLabel("Scs_N:"), 0, 0)
-        self.sp_scs_w = self._size_spin(DEFAULT_RES["Scs"][0])
-        self.sp_scs_h = self._size_spin(DEFAULT_RES["Scs"][1])
-        g.addWidget(self.sp_scs_w, 0, 1)
-        g.addWidget(QLabel("×"), 0, 2)
-        g.addWidget(self.sp_scs_h, 0, 3)
-        g.addWidget(QLabel("Icon_N:"), 1, 0)
-        self.sp_icon_w = self._size_spin(DEFAULT_RES["Icon"][0])
-        self.sp_icon_h = self._size_spin(DEFAULT_RES["Icon"][1])
-        g.addWidget(self.sp_icon_w, 1, 1)
-        g.addWidget(QLabel("×"), 1, 2)
-        g.addWidget(self.sp_icon_h, 1, 3)
-        g.addWidget(QLabel("Độ phân giải:"), 2, 0)
+        f, v = self._dlg_card("Render options")
+        ro = QGridLayout()
+        ro.setHorizontalSpacing(10)
+        ro.setVerticalSpacing(8)
+        self.chk_gpu = QCheckBox("Force GPU rendering (Cycles: OptiX / CUDA / HIP / Metal / oneAPI)")
+        self.chk_gpu.toggled.connect(lambda *_: self._refresh_cfg_label())
+        ro.addWidget(self.chk_gpu, 0, 0, 1, 3)
+        sf = QLabel("Start frame")
+        sf.setObjectName("fieldLabel")
+        ro.addWidget(sf, 1, 0)
+        self.sp_frame = QSpinBox()
+        self.sp_frame.setRange(-100000, 100000)
+        self.sp_frame.setValue(2)
+        self.sp_frame.setMinimumWidth(120)
+        self.sp_frame.valueChanged.connect(self._on_size_changed)
+        ro.addWidget(self.sp_frame, 1, 1)
+        fh = QLabel("Collection N renders at frame  Start + (N − 1)   (e.g. Scs_3 → frame 4)")
+        fh.setObjectName("sub")
+        ro.addWidget(fh, 1, 2)
+        ro.setColumnStretch(2, 1)
+        v.addLayout(ro)
+        outer.addWidget(f)
+
+        f, v = self._dlg_card("Image size")
+        g = QGridLayout()
+        g.setHorizontalSpacing(8)
+        g.setVerticalSpacing(8)
+        for r, (name, key) in enumerate((("Scs_N", "scs"), ("Icon_N", "icon"))):
+            lb = QLabel(name)
+            lb.setObjectName("fieldLabel")
+            g.addWidget(lb, r, 0)
+            w_ = self._size_spin(DEFAULT_RES["Scs" if key == "scs" else "Icon"][0])
+            h_ = self._size_spin(DEFAULT_RES["Scs" if key == "scs" else "Icon"][1])
+            setattr(self, f"sp_{key}_w", w_)
+            setattr(self, f"sp_{key}_h", h_)
+            g.addWidget(w_, r, 1)
+            x = QLabel("×")
+            x.setObjectName("sub")
+            g.addWidget(x, r, 2)
+            g.addWidget(h_, r, 3)
+        lp = QLabel("Resolution scale")
+        lp.setObjectName("fieldLabel")
+        g.addWidget(lp, 2, 0)
         self.sp_percent = QSpinBox()
         self.sp_percent.setRange(1, 100)
         self.sp_percent.setValue(100)
         self.sp_percent.setSuffix(" %")
-        self.sp_percent.setToolTip("100% = đúng size ở trên. Đặt 10-25% để render thử nhanh.")
+        self.sp_percent.setToolTip("100% = exact size above. Use 10-25% for quick test renders.")
         self.sp_percent.valueChanged.connect(self._on_size_changed)
         g.addWidget(self.sp_percent, 2, 1)
         self.lbl_size_preview = QLabel("")
-        self.lbl_size_preview.setObjectName("dim")
+        self.lbl_size_preview.setObjectName("sub")
         g.addWidget(self.lbl_size_preview, 2, 2, 1, 3)
-        g.addWidget(self._btn("Về mặc định", self.reset_sizes, tip="Scs 2796×2048, Icon 2048×2048, 100%"), 0, 4)
+        g.addWidget(self._btn("Reset to default", self.reset_sizes,
+                              tip="Scs 2796×2048, Icon 2048×2048, 100%"), 0, 4)
         g.setColumnStretch(5, 1)
-        v.addWidget(gs)
+        v.addLayout(g)
+        outer.addWidget(f)
 
-        v.addStretch(1)
-        bb = QDialogButtonBox(QDialogButtonBox.Close)
-        bb.button(QDialogButtonBox.Close).setText("Đóng")
-        bb.rejected.connect(dlg.close)
-        v.addWidget(bb)
+        outer.addStretch(1)
+        bb = QHBoxLayout()
+        bb.addStretch(1)
+        bb.addWidget(self._btn("Done", dlg.close, "primary"))
+        outer.addLayout(bb)
         dlg.finished.connect(lambda *_: save_settings(self._collect_settings()))
         self.dlg_settings = dlg
 
     def _build_info_dialog(self):
-        dlg = QDialog(self)
-        dlg.setWindowTitle("ⓘ  Info")
-        dlg.setMinimumWidth(480)
-        v = QVBoxLayout(dlg)
-        v.setSpacing(8)
+        dlg, outer = self._dialog("Info", 540)
+        dlg.setMinimumHeight(600)
 
-        t = QLabel("SCS BATCH RENDER")
-        t.setObjectName("title")
+        head = QVBoxLayout()
+        head.setSpacing(4)
+        logo = QLabel()
+        logo.setAlignment(Qt.AlignCenter)
+        ico = os.path.join(APP_DIR, "ui", "icon.png")
+        if os.path.isfile(ico):
+            logo.setPixmap(QPixmap(ico).scaled(72, 72, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        head.addWidget(logo)
+        t = QLabel("SCS Batch Render")
+        t.setObjectName("h1")
         t.setAlignment(Qt.AlignCenter)
-        v.addWidget(t)
-        ver = QLabel(f"Phiên bản v{APP_VERSION}")
-        ver.setObjectName("dim")
+        head.addWidget(t)
+        ver = QLabel(f"Version {APP_VERSION}")
+        ver.setObjectName("sub")
         ver.setAlignment(Qt.AlignCenter)
-        v.addWidget(ver)
+        head.addWidget(ver)
+        outer.addLayout(head)
 
-        gi = QGroupBox("Thông tin")
-        gl = QGridLayout(gi)
-        gl.setColumnStretch(1, 1)
-        gl.addWidget(QLabel("Người làm app:"), 0, 0)
+        f, v = self._dlg_card("About")
+        g = QGridLayout()
+        g.setColumnStretch(1, 1)
+        g.setVerticalSpacing(8)
+        a = QLabel("Created by")
+        a.setObjectName("fieldLabel")
+        g.addWidget(a, 0, 0)
         au = QLabel(APP_AUTHOR)
         au.setObjectName("author")
-        gl.addWidget(au, 0, 1)
-        gl.addWidget(QLabel("Chức năng:"), 1, 0)
-        desc = QLabel("Render hàng loạt ảnh Icon / SCS (Scs_N, Icon_N, Map, Custom) "
-                      "từ file Blender đã setup, chạy Blender ở chế độ nền.")
+        g.addWidget(au, 0, 1)
+        d = QLabel("Description")
+        d.setObjectName("fieldLabel")
+        g.addWidget(d, 1, 0, Qt.AlignTop)
+        desc = QLabel("Batch renders Icon / SCS images (Scs_N, Icon_N, Map, Custom) from a prepared "
+                      "Blender file, running Blender in the background.")
         desc.setWordWrap(True)
-        gl.addWidget(desc, 1, 1)
-        gl.addWidget(QLabel("GitHub:"), 2, 0)
-        link = QLabel(f'<a style="color:#8fc1ff" href="{updater.REPO_URL}">{updater.REPO_URL}</a>')
+        desc.setMinimumHeight(58)
+        g.addWidget(desc, 1, 1)
+        gh = QLabel("GitHub")
+        gh.setObjectName("fieldLabel")
+        g.addWidget(gh, 2, 0)
+        link = QLabel(f'<a style="color:{PURPLE}; text-decoration:none" href="{updater.REPO_URL}">'
+                      f'{updater.REPO_URL.replace("https://", "")}</a>')
         link.setOpenExternalLinks(True)
-        gl.addWidget(link, 2, 1)
-        v.addWidget(gi)
+        g.addWidget(link, 2, 1)
+        v.addLayout(g)
+        outer.addWidget(f)
 
-        gu = QGroupBox("Update")
-        ul = QVBoxLayout(gu)
-        self.lbl_update_status = QLabel(f"Đang dùng v{APP_VERSION}. Chưa kiểm tra bản mới.")
+        f, v = self._dlg_card("Update")
+        self.lbl_update_status = QLabel(f"You are on v{APP_VERSION}. Not checked yet.")
         self.lbl_update_status.setWordWrap(True)
-        ul.addWidget(self.lbl_update_status)
+        v.addWidget(self.lbl_update_status)
         row = QHBoxLayout()
-        self.btn_update = self._btn("⟳  Kiểm tra update", lambda: self.check_update(silent=False), "update",
-                                    f"Kiểm tra & cập nhật từ {updater.RELEASES_URL}")
+        self.btn_update = self._btn("  Check for updates", lambda: self.check_update(silent=False), "primary",
+                                    f"Check {updater.RELEASES_URL}", icon="update", icon_color="#ffffff")
+        self.btn_update.setMinimumHeight(42)
         row.addWidget(self.btn_update)
-        rel = QLabel(f'<a style="color:#8fc1ff" href="{updater.RELEASES_URL}">Xem các bản phát hành</a>')
+        rel = QLabel(f'<a style="color:{PURPLE}; text-decoration:none" href="{updater.RELEASES_URL}">'
+                     f'View all releases</a>')
         rel.setOpenExternalLinks(True)
         row.addWidget(rel)
         row.addStretch(1)
-        ul.addLayout(row)
-        self.chk_auto_update = QCheckBox("Tự kiểm tra update khi mở app")
-        ul.addWidget(self.chk_auto_update)
-        v.addWidget(gu)
+        v.addLayout(row)
+        self.chk_auto_update = QCheckBox("Check for updates when the app starts")
+        v.addWidget(self.chk_auto_update)
+        outer.addWidget(f)
 
-        foot = QLabel(f"© {time.strftime('%Y')} {APP_AUTHOR}")
-        foot.setObjectName("dim")
+        foot = QLabel(f"© {time.strftime('%Y')} {APP_AUTHOR}. All rights reserved.")
+        foot.setObjectName("sub")
         foot.setAlignment(Qt.AlignCenter)
-        v.addWidget(foot)
-        bb = QDialogButtonBox(QDialogButtonBox.Close)
-        bb.button(QDialogButtonBox.Close).setText("Đóng")
-        bb.rejected.connect(dlg.close)
-        v.addWidget(bb)
+        outer.addWidget(foot)
+        bb = QHBoxLayout()
+        bb.addStretch(1)
+        bb.addWidget(self._btn("Close", dlg.close))
+        outer.addLayout(bb)
         dlg.finished.connect(lambda *_: save_settings(self._collect_settings()))
         self.dlg_info = dlg
 
@@ -591,6 +1146,7 @@ class MainWindow(QMainWindow):
     def open_info(self):
         self._popup(self.dlg_info)
 
+    # ------------------------------------------------------------------ sizes
     def res_for(self, prefix):
         if prefix == "Scs":
             return self.sp_scs_w.value(), self.sp_scs_h.value()
@@ -606,26 +1162,28 @@ class MainWindow(QMainWindow):
         self.sp_percent.setValue(100)
 
     def _on_size_changed(self, *_):
+        if not hasattr(self, "sp_percent") or not hasattr(self, "sp_icon_h") or not hasattr(self, "sp_frame"):
+            return
         p = self.sp_percent.value() / 100.0
         sw, sh = self.res_for("Scs")
         iw, ih = self.res_for("Icon")
-        if hasattr(self, "lbl_size_preview"):
-            self.lbl_size_preview.setText(f"→ thực tế: Scs {int(sw * p)}×{int(sh * p)}, Icon {int(iw * p)}×{int(ih * p)}")
+        self.lbl_size_preview.setText(f"Output: Scs {int(sw * p)}×{int(sh * p)}, Icon {int(iw * p)}×{int(ih * p)}")
         self._refresh_tree_res()
         self._refresh_cfg_label()
 
     def _refresh_cfg_label(self):
-        if not hasattr(self, "btn_cfg"):
+        if not all(hasattr(self, a) for a in ("btn_cfg", "sp_icon_h", "chk_gpu", "sp_frame")):
             return
         txt = self.cmb_blender.currentText()
         short = txt.split("  -  ")[0] if "  -  " in txt else (os.path.basename(txt) if txt else "")
         if not self.blender_exe():
-            short = "⚠ chưa có blender.exe"
+            short = "No blender.exe selected"
         sw, sh = self.res_for("Scs")
         iw, ih = self.res_for("Icon")
         pct = self.sp_percent.value()
-        self.btn_cfg.setText(f"{short}   |   Scs {sw}×{sh}   |   Icon {iw}×{ih}"
-                             + (f"   |   {pct}%" if pct != 100 else "") + "   ⚙")
+        gpu = "GPU" if self.chk_gpu.isChecked() else "Scene device"
+        self.btn_cfg.setText(f"⚙  {short}  ·  {gpu}  ·  Start frame {self.sp_frame.value()}\n"
+                             f"     Scs {sw}×{sh}  ·  Icon {iw}×{ih}" + (f"  ·  Scale {pct}%" if pct != 100 else ""))
 
     def _refresh_tree_res(self):
         if not hasattr(self, "tree"):
@@ -635,8 +1193,9 @@ class MainWindow(QMainWindow):
             top = self.tree.topLevelItem(i)
             d = top.data(0, Qt.UserRole) or {}
             res = self.res_for(d.get("prefix"))
-            if res and "frame" in d:
-                top.setText(1, f"{res[0]}×{res[1]}  F{d['frame']}")
+            if res and "number" in d:
+                frame = self.sp_frame.value() + d["number"] - 1
+                top.setText(1, f"{res[0]}×{res[1]}  ·  F{frame}")
         self.tree.blockSignals(False)
 
     def _res_args(self):
@@ -644,6 +1203,7 @@ class MainWindow(QMainWindow):
         iw, ih = self.res_for("Icon")
         return ["--scs-res", f"{sw}x{sh}", "--icon-res", f"{iw}x{ih}"]
 
+    # ------------------------------------------------------------------ settings io
     def _load_into_ui(self):
         s = self.settings
         self.ed_blend.setText(s.get("blend_file", ""))
@@ -657,12 +1217,12 @@ class MainWindow(QMainWindow):
         self.sp_scs_h.setValue(int(sr[1]))
         self.sp_icon_w.setValue(int(ir[0]))
         self.sp_icon_h.setValue(int(ir[1]))
-        self._on_size_changed()
         self.chk_auto_update.setChecked(s.get("auto_check_update", True))
         (self.rb_checked if s.get("mode") == "checked" else self.rb_all).setChecked(True)
         if s.get("blender_exe") and os.path.isfile(s["blender_exe"]):
-            self._add_blender_item(s["blender_exe"], f"{s['blender_exe']}", select=True)
-        self._update_tree_enabled()
+            self._add_blender_item(s["blender_exe"], s["blender_exe"], select=True)
+        self._update_file_chip()
+        self._on_size_changed()
 
     def _collect_settings(self):
         s = self.settings
@@ -679,8 +1239,8 @@ class MainWindow(QMainWindow):
         return s
 
     def closeEvent(self, e):
-        if self.proc and self.proc.state() != QProcess.NotRunning:
-            r = QMessageBox.question(self, APP_NAME, "Blender đang chạy. Dừng và thoát?")
+        if self._busy():
+            r = QMessageBox.question(self, APP_NAME, "Blender is still running. Stop it and quit?")
             if r != QMessageBox.Yes:
                 e.ignore()
                 return
@@ -694,16 +1254,16 @@ class MainWindow(QMainWindow):
         self.log.appendPlainText(text)
 
     def save_log(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Lưu log", os.path.join(self.ed_out.text() or APP_DIR,
-                                              f"render_log_{time.strftime('%Y%m%d_%H%M%S')}.txt"), "Text (*.txt)")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save log", os.path.join(self.ed_out.text() or APP_DIR,
+                                           f"render_log_{time.strftime('%Y%m%d_%H%M%S')}.txt"), "Text (*.txt)")
         if path:
             with open(path, "w", encoding="utf-8") as f:
                 f.write(self.log.toPlainText())
 
     # ------------------------------------------------------------------ blender exe
     def blender_exe(self):
-        d = self.cmb_blender.currentData()
-        return d or ""
+        return self.cmb_blender.currentData() or ""
 
     def _add_blender_item(self, path, label, select=False):
         for i in range(self.cmb_blender.count()):
@@ -712,15 +1272,17 @@ class MainWindow(QMainWindow):
                     self.cmb_blender.setItemText(i, label)
                 if select:
                     self.cmb_blender.setCurrentIndex(i)
+                self._refresh_cfg_label()
                 return
         self.cmb_blender.addItem(label or path, path)
         if select:
             self.cmb_blender.setCurrentIndex(self.cmb_blender.count() - 1)
+        self._refresh_cfg_label()
 
     def find_blenders(self):
         self.btn_find.setEnabled(False)
-        self.btn_find.setText("Đang dò...")
-        self.write_log("Đang tự dò Blender trong máy...")
+        self.btn_find.setText("Detecting...")
+        self.write_log("Detecting Blender installs...")
         th = FindBlenderThread()
         th.found.connect(self._on_blenders_found)
         th.finished.connect(lambda: self.threads.remove(th) if th in self.threads else None)
@@ -729,24 +1291,24 @@ class MainWindow(QMainWindow):
 
     def _on_blenders_found(self, items):
         self.btn_find.setEnabled(True)
-        self.btn_find.setText("Dò lại")
+        self.btn_find.setText("Detect again")
         keep = self.blender_exe() or self.settings.get("blender_exe", "")
         for b in items:
             self._add_blender_item(b["path"], b["label"])
         if items:
-            self.write_log(f"Tìm thấy {len(items)} bản Blender:")
+            self.write_log(f"Found {len(items)} Blender install(s):")
             for b in items:
                 self.write_log("   " + b["label"])
         else:
-            self.write_log("!!! Không tự tìm thấy blender.exe — bấm 'Chọn...' để chỉ đường dẫn.")
-        # Giu lua chon cu neu con ton tai, neu khong chon ban moi nhat
+            self.write_log("!!! No blender.exe found automatically - pick it in Settings > Browse...")
         if keep and os.path.isfile(keep):
             self._add_blender_item(keep, "", select=True)
         elif items:
             self._add_blender_item(items[0]["path"], items[0]["label"], select=True)
 
     def browse_blender(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Chọn blender.exe", "", "blender.exe (blender.exe);;Exe (*.exe)")
+        path, _ = QFileDialog.getOpenFileName(self, "Select blender.exe", "",
+                                              "blender.exe (blender.exe);;Programs (*.exe)")
         if path:
             path = os.path.abspath(path)
             v = blender_finder.get_blender_version(path)
@@ -754,21 +1316,27 @@ class MainWindow(QMainWindow):
             self._add_blender_item(path, label, select=True)
 
     # ------------------------------------------------------------------ paths
+    def _update_file_chip(self):
+        p = self.ed_blend.text().strip().strip('"')
+        self.lbl_file_chip.setText(f"  {os.path.basename(p)}  " if p else "No .blend loaded")
+        self.lbl_file_chip.setToolTip(p)
+
     def browse_blend(self):
         start = os.path.dirname(self.ed_blend.text()) if self.ed_blend.text() else ""
-        path, _ = QFileDialog.getOpenFileName(self, "Chọn file .blend", start, "Blender (*.blend)")
+        path, _ = QFileDialog.getOpenFileName(self, "Select .blend file", start, "Blender (*.blend)")
         if path:
             self.set_blend(path)
 
     def set_blend(self, path):
         self._remember_unchecked()
         self.ed_blend.setText(os.path.abspath(path))
+        self._update_file_chip()
         if not self.ed_out.text().strip():
             self.ed_out.setText(os.path.join(os.path.dirname(path), "Render"))
         self.start_scan()
 
     def browse_out(self):
-        d = QFileDialog.getExistingDirectory(self, "Chọn thư mục lưu ảnh", self.ed_out.text())
+        d = QFileDialog.getExistingDirectory(self, "Select output folder", self.ed_out.text())
         if d:
             self.ed_out.setText(os.path.abspath(d))
 
@@ -776,6 +1344,8 @@ class MainWindow(QMainWindow):
         d = self.ed_out.text().strip()
         if d and os.path.isdir(d):
             QDesktopServices.openUrl(QUrl.fromLocalFile(d))
+        else:
+            QMessageBox.information(self, APP_NAME, "The output folder does not exist yet.")
 
     def dragEnterEvent(self, e):
         if e.mimeData().hasUrls():
@@ -800,17 +1370,17 @@ class MainWindow(QMainWindow):
         blend = self.ed_blend.text().strip().strip('"')
         out = self.ed_out.text().strip().strip('"')
         if not exe or not os.path.isfile(exe):
-            QMessageBox.warning(self, APP_NAME, "Chưa có blender.exe hợp lệ.\nHãy chọn trong ⚙ Setting.")
+            QMessageBox.warning(self, APP_NAME, "No valid blender.exe selected.\nPlease choose one in Settings.")
             self.open_settings()
             return None
         if not blend or not os.path.isfile(blend):
-            QMessageBox.warning(self, APP_NAME, "Chưa chọn file .blend (hoặc file không tồn tại).")
+            QMessageBox.warning(self, APP_NAME, "Please select a .blend file (the file was not found).")
             return None
         if need_out and not out:
-            QMessageBox.warning(self, APP_NAME, "Chưa chọn thư mục lưu ảnh.")
+            QMessageBox.warning(self, APP_NAME, "Please select an output folder.")
             return None
         if not os.path.isfile(CORE_SCRIPT):
-            QMessageBox.critical(self, APP_NAME, f"Thiếu file {CORE_SCRIPT}. Hãy bấm Update online.")
+            QMessageBox.critical(self, APP_NAME, f"Missing {CORE_SCRIPT}. Please update the app (Info > Update).")
             return None
         return exe, blend, out
 
@@ -820,6 +1390,7 @@ class MainWindow(QMainWindow):
     def _set_running(self, running):
         self.btn_render.setEnabled(not running)
         self.btn_scan.setEnabled(not running)
+        self.nav_buttons["scan"].setEnabled(not running)
         self.btn_update.setEnabled(not running)
         self.btn_stop.setEnabled(running)
 
@@ -843,7 +1414,7 @@ class MainWindow(QMainWindow):
 
     def _on_proc_error(self, err):
         if err == QProcess.FailedToStart:
-            self.write_log("!!! Không chạy được Blender (sai đường dẫn hoặc bị chặn).")
+            self.write_log("!!! Could not start Blender (wrong path or blocked).")
             self._set_running(False)
 
     def _on_output(self):
@@ -852,9 +1423,6 @@ class MainWindow(QMainWindow):
         while "\n" in self.proc_buffer:
             line, self.proc_buffer = self.proc_buffer.split("\n", 1)
             self._handle_line(line)
-
-    RE_SAMPLE = re.compile(r"Sample (\d+)/(\d+)")
-    RE_REMAIN = re.compile(r"Remaining:\s*([\d:.]+)")
 
     def _handle_line(self, line):
         if line.startswith("@@SCS "):
@@ -868,7 +1436,7 @@ class MainWindow(QMainWindow):
             cur, tot = int(m.group(1)), int(m.group(2))
             self.pb_item.setRange(0, max(1, tot))
             self.pb_item.setValue(cur)
-            self.pb_item.setFormat(f"Sample {cur}/{tot}")
+            self.lbl_sample.setText(f"Sample {cur}/{tot}")
             r = self.RE_REMAIN.search(line)
             self.item_remaining = r.group(1) if r else ""
             if not self.chk_verbose.isChecked():
@@ -882,37 +1450,43 @@ class MainWindow(QMainWindow):
         ev = d.get("ev")
         if ev == "total":
             self.total = d["total"]
-            self.pb_all.setRange(0, max(1, self.total))
-            self.pb_all.setValue(0)
+            self._update_progress()
         elif ev == "item":
             self.item_start = time.time()
             self.item_remaining = ""
             self.pb_item.setRange(0, 100)
             self.pb_item.setValue(0)
-            self.pb_item.setFormat("Đang chuẩn bị...")
-            self.lbl_now.setText(f"[{d['i']}/{d['total']}]  {d['collection']}  ›  {d['label']}")
+            self.lbl_sample.setText("Preparing...")
+            self.lbl_now.setText(f"{d['collection']}  ›  {d['label']}")
             res = d.get("res") or ["?", "?"]
-            self.lbl_now_info.setText(f"Resolution {res[0]}×{res[1]}  |  Frame {d.get('frame')}\n"
-                                      f"→ {os.path.basename(d.get('path', ''))}")
-            self.lbl_status.setText(f"Đang render {d['i']}/{d['total']}: {d['collection']} › {d['label']}")
-            self._mark_item(d["key"], "Đang render...", C_RENDERING, scroll=True)
+            self.lbl_now_info.setText(f"Image {d['i']} of {d['total']}   ·   {res[0]}×{res[1]}   ·   "
+                                      f"Frame {d.get('frame')}\n{os.path.basename(d.get('path', ''))}")
+            self.lbl_status.setText(f"Rendering {d['i']}/{d['total']}: {d['collection']} › {d['label']}")
+            self._mark_item(d["key"], "Rendering...", C_RENDERING, scroll=True)
         elif ev == "done":
             self.done_count += 1
             self.done_secs.append(d.get("sec", 0))
-            self.pb_all.setValue(self.done_count)
             self.pb_item.setValue(self.pb_item.maximum())
-            self._mark_item(d["key"], f"Xong ({d.get('sec', 0)}s)", C_DONE)
+            self._mark_item(d["key"], f"Done  {d.get('sec', 0)}s", C_DONE)
             self.last_paths[d["key"]] = d.get("path")
             self.show_image(d.get("path"))
+            self._add_recent(d.get("path"), d.get("sec", 0))
+            self._update_progress()
         elif ev == "error":
             self.done_count += 1
-            self.pb_all.setValue(self.done_count)
-            self._mark_item(d["key"], "LỖI", C_ERROR)
-            self.write_log(f"!!! LỖI {d.get('key')}: {d.get('msg')}")
+            self.error_count += 1
+            self._mark_item(d["key"], "ERROR", C_ERROR)
+            self.write_log(f"!!! ERROR {d.get('key')}: {d.get('msg')}")
+            self._update_progress()
         elif ev == "finish":
             self.finish_info = d
-        elif ev == "scan_done":
-            pass
+
+    def _update_progress(self):
+        t = max(self.total, 0)
+        self.ring.set_value(self.done_count / t if t else 0, f"{self.done_count}/{t}", "images")
+        pct = int(100 * self.done_count / t) if t else 0
+        self.st_done.set(f"{self.done_count} / {t}",
+                         f"{pct}% complete  ·  " + (f"{self.error_count} error(s)" if self.error_count else "no errors"))
 
     def _mark_item(self, key, text, color, scroll=False):
         it = self.key_to_item.get(key)
@@ -930,13 +1504,16 @@ class MainWindow(QMainWindow):
             return
         el = time.time() - self.render_start
         it = time.time() - self.item_start if self.item_start else 0
-        txt = f"Tổng thời gian: {human_time(el)}   |   Ảnh này: {human_time(it)}"
-        if getattr(self, "item_remaining", ""):
-            txt += f" (còn ~{self.item_remaining})"
+        txt = f"This image: {human_time(it)}"
+        if self.item_remaining:
+            txt += f"  (~{self.item_remaining} left)"
+        eta = "--:--"
         if self.done_secs and self.total:
             avg = sum(self.done_secs) / len(self.done_secs)
-            txt += f"\nTrung bình {avg:.1f}s/ảnh  |  Ước tính còn: {human_time(avg * (self.total - self.done_count))}"
+            eta = human_time(avg * (self.total - self.done_count))
+            txt += f"\nAverage {avg:.1f}s per image"
         self.lbl_time.setText(txt)
+        self.st_time.set(human_time(el), f"ETA {eta}")
 
     def _on_finished(self, code, status):
         if self.proc_buffer.strip():
@@ -950,42 +1527,46 @@ class MainWindow(QMainWindow):
             self._on_scan_finished(code)
         elif mode == "render":
             el = human_time(time.time() - self.render_start)
+            self.st_time.set(el, "Finished")
             if self.stop_requested:
-                self.lbl_now.setText("■ ĐÃ DỪNG")
-                self.lbl_status.setText(f"Đã dừng sau {el}. Xong {self.done_count}/{self.total}.")
-                self.write_log(f"\n=== ĐÃ DỪNG theo yêu cầu | {self.done_count}/{self.total} ảnh | {el} ===")
+                self.lbl_now.setText("Stopped")
+                self.lbl_now_info.setText(f"Stopped by user after {el}.")
+                self.lbl_status.setText(f"Stopped after {el}. {self.done_count}/{self.total} images done.")
+                self.write_log(f"\n=== STOPPED by user | {self.done_count}/{self.total} images | {el} ===")
                 for key, it in self.key_to_item.items():
-                    if it.text(2) == "Đang render...":
-                        self._mark_item(key, "Đã dừng", C_ERROR)
+                    if it.text(2) == "Rendering...":
+                        self._mark_item(key, "Stopped", C_ERROR)
             else:
-                fi = getattr(self, "finish_info", None) or {}
+                fi = self.finish_info or {}
                 ok, fail = fi.get("ok", self.done_count), fi.get("fail", 0)
-                self.lbl_now.setText("✔ HOÀN TẤT" if not fail and code in (0, 2) and fi else "Kết thúc")
-                msg = f"Hoàn tất: {ok} OK, {fail} lỗi, tổng {el}."
-                if not fi:
-                    msg = f"Blender thoát (code {code}) trước khi xong — xem log."
+                if fi:
+                    self.lbl_now.setText("All done ✓" if not fail else "Finished with errors")
+                    msg = f"Finished: {ok} OK, {fail} failed, total {el}."
+                else:
+                    self.lbl_now.setText("Blender exited")
+                    msg = f"Blender exited (code {code}) before finishing - see the log."
+                self.lbl_now_info.setText(msg)
                 self.lbl_status.setText(msg)
                 self.write_log("\n=== " + msg + " ===")
                 QApplication.alert(self)
-            self.pb_item.setFormat("")
+            self.lbl_sample.setText("")
         self._cleanup_temp()
 
     def _cleanup_temp(self):
-        for p in (self.select_json_path,):
-            if p and os.path.isfile(p):
-                try:
-                    os.remove(p)
-                except Exception:
-                    pass
+        p = self.select_json_path
+        if p and os.path.isfile(p):
+            try:
+                os.remove(p)
+            except Exception:
+                pass
         self.select_json_path = None
 
     def stop_now(self):
         if not self._busy():
             return
         self.stop_requested = True
-        self.write_log("\n>>> DỪNG NGAY - đang kill Blender...")
-        pid = self.proc.processId()
-        kill_tree(pid)
+        self.write_log("\n>>> STOP NOW - killing Blender...")
+        kill_tree(self.proc.processId())
         self.proc.kill()
 
     # ------------------------------------------------------------------ scan
@@ -996,12 +1577,13 @@ class MainWindow(QMainWindow):
         if not r:
             return
         exe, blend, _ = r
+        self._update_file_chip()
         save_settings(self._collect_settings())
         fd, self.scan_json_path = tempfile.mkstemp(prefix="scs_scan_", suffix=".json")
         os.close(fd)
-        self.lbl_summary.setText("Đang quét scene (Blender đang mở file, có thể mất vài giây)...")
-        self.lbl_status.setText("Đang quét scene...")
-        self.write_log(f"\n=== QUÉT SCENE: {blend} ===")
+        self.lbl_selected.setText("Scanning scene (Blender is opening the file)...")
+        self.lbl_status.setText("Scanning scene...")
+        self.write_log(f"\n=== SCAN SCENE: {blend} ===")
         args = ["--background", blend, "--python", CORE_SCRIPT, "--python-exit-code", "1", "--",
                 "--scan-json", self.scan_json_path, "--start-frame", str(self.sp_frame.value())] + self._res_args()
         self._start_process(exe, args, "scan")
@@ -1018,36 +1600,40 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         if not data:
-            self.lbl_summary.setText("Quét thất bại — xem log.")
-            self.lbl_status.setText(f"Quét lỗi (code {code}).")
+            self.lbl_selected.setText("Scan failed - see the log.")
+            self.lbl_status.setText(f"Scan failed (code {code}).")
             return
         self.scan_data = data
         self.populate_tree(data)
-        self.lbl_status.setText("Quét xong.")
+        self.lbl_status.setText("Scan complete.")
+
+    TYPE_NAMES = {"map": "Map", "map_event": "Map event", "object": "Object"}
 
     def populate_tree(self, data):
         self.tree.blockSignals(True)
         self.tree.clear()
         self.key_to_item = {}
+        self.last_paths = {}
         unchecked = set(self.settings.get("unchecked", {}).get(self._blend_key(), []))
 
         n_scs = n_icon = img_scs = img_icon = 0
         for c in data.get("collections", []):
             res = self.res_for(c["prefix"]) or c["resolution"]
-            top = QTreeWidgetItem([f"{c['name']}", f"{res[0]}×{res[1]}  F{c['frame']}",
-                                   f"{len(c['items'])} ảnh"])
+            frame = self.sp_frame.value() + c["number"] - 1
+            top = QTreeWidgetItem([c["name"], f"{res[0]}×{res[1]}  ·  F{frame}", f"{len(c['items'])} image" + ("s" if len(c['items']) != 1 else "")])
             top.setFlags(top.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsAutoTristate)
             top.setData(0, Qt.UserRole, {"kind": "col", "prefix": c["prefix"], "name": c["name"],
-                                         "frame": c["frame"]})
+                                         "number": c["number"]})
             f = top.font(0)
             f.setBold(True)
             top.setFont(0, f)
+            top.setForeground(2, QBrush(QColor(SUB)))
             self.tree.addTopLevelItem(top)
             for i in c["items"]:
-                ch = QTreeWidgetItem([i["label"], {"map": "Map", "map_event": "Map event",
-                                                   "object": "Object"}.get(i["type"], i["type"]), ""])
+                ch = QTreeWidgetItem([i["label"], self.TYPE_NAMES.get(i["type"], i["type"]), ""])
                 ch.setFlags(ch.flags() | Qt.ItemIsUserCheckable)
-                ch.setData(0, Qt.UserRole, {"kind": "item", "key": i["key"], "prefix": c["prefix"]})
+                ch.setData(0, Qt.UserRole, {"kind": "item", "key": i["key"], "prefix": c["prefix"],
+                                            "type": i["type"]})
                 ch.setCheckState(0, Qt.Unchecked if i["key"] in unchecked else Qt.Checked)
                 top.addChild(ch)
                 self.key_to_item[i["key"]] = ch
@@ -1062,14 +1648,19 @@ class MainWindow(QMainWindow):
 
         custom = data.get("custom", [])
         if custom:
-            top = QTreeWidgetItem(["Custom (scs_render_separate)", "frame gốc", f"{len(custom)} ảnh"])
+            top = QTreeWidgetItem(["Custom (scs_render_separate)", "original frame", f"{len(custom)} image" + ("s" if len(custom) != 1 else "")])
             top.setFlags(top.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsAutoTristate)
             top.setData(0, Qt.UserRole, {"kind": "col", "prefix": "Custom", "name": "Custom"})
+            f = top.font(0)
+            f.setBold(True)
+            top.setFont(0, f)
+            top.setForeground(2, QBrush(QColor(SUB)))
             self.tree.addTopLevelItem(top)
             for i in custom:
                 ch = QTreeWidgetItem([i["label"], f"Custom ({i.get('collection', '')})", ""])
                 ch.setFlags(ch.flags() | Qt.ItemIsUserCheckable)
-                ch.setData(0, Qt.UserRole, {"kind": "item", "key": i["key"], "prefix": "Custom"})
+                ch.setData(0, Qt.UserRole, {"kind": "item", "key": i["key"], "prefix": "Custom",
+                                            "type": "custom"})
                 ch.setCheckState(0, Qt.Unchecked if i["key"] in unchecked else Qt.Checked)
                 top.addChild(ch)
                 self.key_to_item[i["key"]] = ch
@@ -1079,23 +1670,26 @@ class MainWindow(QMainWindow):
         self.tree.blockSignals(False)
         self._refresh_check_colors()
 
+        total = img_scs + img_icon + len(custom)
+        self.scene_counts = (img_scs, img_icon, len(custom), total)
+        self.d_scs.set(img_scs, total)
+        self.d_icon.set(img_icon, total)
+        self.d_custom.set(len(custom), total)
+        self.st_total.set(total, f"Scs {n_scs} col · Icon {n_icon} col · Custom {len(custom)}")
+
         warn = []
         if not data.get("has_setup"):
-            warn.append("⚠ không có collection 'Setup'")
+            warn.append("no 'Setup' collection")
         if data.get("engine") != "CYCLES":
-            warn.append(f"⚠ engine = {data.get('engine')} (GPU chỉ áp dụng cho Cycles)")
-        total = img_scs + img_icon + len(custom)
-        self.lbl_summary.setText(
-            f"<b>Scs:</b> {n_scs} collection ({img_scs} ảnh) &nbsp;&nbsp; "
-            f"<b>Icon:</b> {n_icon} collection ({img_icon} ảnh) &nbsp;&nbsp; "
-            f"<b>Custom:</b> {len(custom)} &nbsp;&nbsp; <b>Tổng:</b> {total} ảnh"
-            f"<br><span style='color:#8a8f98'>Scene '{data.get('scene')}' | Map: "
-            f"{'có' if data.get('has_map') else 'không'}</span>"
-            + ("<br><span style='color:#f0c050'>" + " | ".join(warn) + "</span>" if warn else ""))
-        self.write_log(f"Quét xong: Scs {n_scs} ({img_scs} ảnh), Icon {n_icon} ({img_icon} ảnh), "
-                       f"Custom {len(custom)}, tổng {total} ảnh.")
-        self._update_selected_label()
-        self._update_tree_enabled()
+            warn.append(f"engine is {data.get('engine')} (GPU option only works with Cycles)")
+        self.lbl_scene.setText(f"Scene '{data.get('scene')}'  ·  Map: {'yes' if data.get('has_map') else 'no'}"
+                               + ("   ⚠ " + ", ".join(warn) if warn else ""))
+        self.write_log(f"Scan complete: Scs {n_scs} ({img_scs} images), Icon {n_icon} ({img_icon} images), "
+                       f"Custom {len(custom)}, total {total} images.")
+        if warn:
+            self.write_log("!!! Warning: " + "; ".join(warn))
+        self.apply_filter()
+        self._update_stats()
 
     def _blend_key(self):
         return os.path.normcase(os.path.abspath(self.ed_blend.text().strip().strip('"') or "_"))
@@ -1112,20 +1706,19 @@ class MainWindow(QMainWindow):
     def _on_tree_changed(self, item, col):
         if col == 0:
             self._refresh_check_colors()
-            self._update_selected_label()
+            self._update_stats()
 
     def _refresh_check_colors(self):
-        """Muc duoc tich: chu sang; khong tich: chu mo -> nhin la biet ngay."""
         self.tree.blockSignals(True)
         for it in self.key_to_item.values():
-            on = it.checkState(0) == Qt.Checked
-            col = C_ON if on else C_DIM
+            col = C_ON if it.checkState(0) == Qt.Checked else C_DIM
             it.setForeground(0, QBrush(col))
-            it.setForeground(1, QBrush(col))
+            it.setForeground(1, QBrush(col if col == C_DIM else QColor(SUB)))
         for i in range(self.tree.topLevelItemCount()):
             top = self.tree.topLevelItem(i)
             st = top.checkState(0)
             top.setForeground(0, QBrush(C_ON if st == Qt.Checked else C_PART if st == Qt.PartiallyChecked else C_DIM))
+            top.setForeground(1, QBrush(QColor(SUB)))
         self.tree.blockSignals(False)
 
     def _on_tree_double(self, item, col):
@@ -1134,14 +1727,16 @@ class MainWindow(QMainWindow):
         if p and os.path.isfile(p):
             QDesktopServices.openUrl(QUrl.fromLocalFile(p))
 
-    def _update_selected_label(self):
-        n = len(self.checked_keys())
-        self.lbl_selected.setText(f"Đang tích: {n}/{len(self.key_to_item)} ảnh")
-
-    def _update_tree_enabled(self):
-        only = self.rb_checked.isChecked()
-        self.tree.setEnabled(True)
-        self.lbl_selected.setVisible(only)
+    def _update_stats(self):
+        n_all = len(self.key_to_item)
+        n_chk = len(self.checked_keys())
+        if self.rb_checked.isChecked():
+            self.st_selected.set(n_chk, f"Checked only  ·  {n_all - n_chk} skipped")
+        else:
+            self.st_selected.set(n_all, "Mode: render all")
+        if n_all:
+            self.lbl_selected.setText(f"Checked: {n_chk} of {n_all} images"
+                                      + ("" if self.rb_checked.isChecked() else "  (ignored in 'Render all' mode)"))
 
     def set_all_checked(self, state):
         self.tree.blockSignals(True)
@@ -1149,7 +1744,7 @@ class MainWindow(QMainWindow):
             it.setCheckState(0, Qt.Checked if state else Qt.Unchecked)
         self.tree.blockSignals(False)
         self._refresh_check_colors()
-        self._update_selected_label()
+        self._update_stats()
 
     def check_prefix(self, prefix):
         self.tree.blockSignals(True)
@@ -1158,12 +1753,44 @@ class MainWindow(QMainWindow):
             it.setCheckState(0, Qt.Checked if p == prefix else Qt.Unchecked)
         self.tree.blockSignals(False)
         self._refresh_check_colors()
-        self._update_selected_label()
         self.rb_checked.setChecked(True)
+        self._update_stats()
 
     def toggle_expand(self):
         any_open = any(self.tree.topLevelItem(i).isExpanded() for i in range(self.tree.topLevelItemCount()))
-        self.tree.collapseAll() if any_open else self.tree.expandAll()
+        if any_open:
+            self.tree.collapseAll()
+        else:
+            self.tree.expandAll()
+
+    def apply_filter(self, *_):
+        text = self.ed_search.text().strip().lower()
+        mode = self.cmb_filter.currentIndex()
+        for i in range(self.tree.topLevelItemCount()):
+            top = self.tree.topLevelItem(i)
+            prefix = (top.data(0, Qt.UserRole) or {}).get("prefix")
+            visible_children = 0
+            for j in range(top.childCount()):
+                ch = top.child(j)
+                t = (ch.data(0, Qt.UserRole) or {}).get("type")
+                ok = True
+                if mode == 1:
+                    ok = prefix == "Scs"
+                elif mode == 2:
+                    ok = prefix == "Icon"
+                elif mode == 3:
+                    ok = prefix == "Custom"
+                elif mode == 4:
+                    ok = t in ("map", "map_event")
+                elif mode == 5:
+                    ok = t == "object"
+                if ok and text:
+                    ok = text in ch.text(0).lower() or text in top.text(0).lower()
+                ch.setHidden(not ok)
+                visible_children += ok
+            top.setHidden(visible_children == 0 and top.childCount() > 0)
+            if text and visible_children:
+                top.setExpanded(True)
 
     # ------------------------------------------------------------------ render
     def start_render(self):
@@ -1174,37 +1801,38 @@ class MainWindow(QMainWindow):
             return
         exe, blend, out = r
         only_checked = self.rb_checked.isChecked()
+        keys = []
         if only_checked:
             if not self.key_to_item:
-                QMessageBox.information(self, APP_NAME, "Hãy 'Quét scene' trước để chọn mục cần render.")
+                QMessageBox.information(self, APP_NAME, "Please Scan the scene first to choose what to render.")
                 return
             keys = self.checked_keys()
             if not keys:
-                QMessageBox.information(self, APP_NAME, "Chưa tích mục nào.")
+                QMessageBox.information(self, APP_NAME, "Nothing is checked.")
                 return
         os.makedirs(out, exist_ok=True)
         self._remember_unchecked()
         save_settings(self._collect_settings())
 
-        # reset trang thai tree + preview
         for key in self.key_to_item:
-            self._mark_item(key, "", QColor("#dfe3e8"))
+            self._mark_item(key, "", C_NORMAL)
         self.done_count = 0
+        self.error_count = 0
         self.done_secs = []
         self.total = 0
         self.finish_info = None
         self.item_start = 0
         self.render_start = time.time()
-        self.pb_all.setRange(0, 1)
-        self.pb_all.setValue(0)
-        self.lbl_now.setText("Đang khởi động Blender...")
-        self.lbl_now_info.setText("Lần đầu có thể mất vài phút để biên dịch shader / load scene lên GPU.")
+        self._update_progress()
+        self.st_time.set("00:00", "ETA --:--")
+        self.lbl_now.setText("Starting Blender...")
+        self.lbl_now_info.setText("The first image can take a few minutes (shader compile / loading the scene).")
 
         args = ["--background", blend, "--python", CORE_SCRIPT, "--python-exit-code", "1", "--",
                 "--output", out, "--start-frame", str(self.sp_frame.value()),
                 "--percent", str(self.sp_percent.value())] + self._res_args()
         if self.sp_percent.value() < 100:
-            self.write_log(f"!!! Lưu ý: đang render ở {self.sp_percent.value()}% độ phân giải (render thử).")
+            self.write_log(f"!!! Note: rendering at {self.sp_percent.value()}% resolution (test render).")
         if self.chk_gpu.isChecked():
             args.append("--gpu")
         if only_checked:
@@ -1212,12 +1840,12 @@ class MainWindow(QMainWindow):
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(keys, f, ensure_ascii=False)
             args += ["--select", self.select_json_path]
-            self.write_log(f"\n=== RENDER {len(keys)} MỤC ĐƯỢC TÍCH ===")
+            self.write_log(f"\n=== RENDER {len(keys)} CHECKED ITEM(S) ===")
         else:
-            self.write_log("\n=== RENDER TẤT CẢ ===")
+            self.write_log("\n=== RENDER ALL ===")
         self._start_process(exe, args, "render")
 
-    # ------------------------------------------------------------------ preview image
+    # ------------------------------------------------------------------ preview
     def show_image(self, path):
         if not path or not os.path.isfile(path):
             return
@@ -1225,9 +1853,10 @@ class MainWindow(QMainWindow):
         if pm.isNull():
             return
         self.last_image = path
-        self.img.setPixmap(pm.scaled(self.img.width() - 6, self.img.height() - 6,
+        self.img.setPixmap(pm.scaled(self.img.width() - 8, self.img.height() - 8,
                                      Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        self.lbl_img.setText(f"{os.path.basename(path)}  ({pm.width()}×{pm.height()}) — bấm để mở")
+        self.lbl_img.setText(self._elide(os.path.basename(path), 26) + f"  ·  {pm.width()}×{pm.height()}")
+        self.lbl_img.setToolTip(path)
 
     def open_last_image(self):
         if self.last_image and os.path.isfile(self.last_image):
@@ -1238,7 +1867,7 @@ class MainWindow(QMainWindow):
         if self._busy():
             return
         self.btn_update.setEnabled(False)
-        self.btn_update.setText("Đang kiểm tra...")
+        self.btn_update.setText("  Checking...")
         th = UpdateCheckThread()
         th.result.connect(lambda info, err: self._on_update_checked(info, err, silent))
         th.finished.connect(lambda: self.threads.remove(th) if th in self.threads else None)
@@ -1247,37 +1876,38 @@ class MainWindow(QMainWindow):
 
     def _on_update_checked(self, info, err, silent):
         self.btn_update.setEnabled(not self._busy())
-        self.btn_update.setText("⟳  Kiểm tra update")
+        self.btn_update.setText("  Check for updates")
         if err:
             if not silent:
-                QMessageBox.warning(self, "Update", f"Không kiểm tra được update:\n{err}")
-            self.write_log(f"[update] lỗi: {err}")
-            self.lbl_update_status.setText(f"Đang dùng v{APP_VERSION}. Không kiểm tra được: {err}")
+                QMessageBox.warning(self, "Update", f"Could not check for updates:\n{err}")
+            self.write_log(f"[update] error: {err}")
+            self.lbl_update_status.setText(f"You are on v{APP_VERSION}. Could not check: {err}")
             return
         lver = updater.local_version()
         rver = info.get("version") or "?"
         self.lbl_update_status.setText(
-            f"Đang dùng v{lver}. Bản mới nhất trên GitHub: {info.get('tag')} ({info.get('date', '')}).")
+            f"You are on v{lver}. Latest release: {info.get('tag')} ({info.get('date', '')}).")
         if not updater.is_newer(info, lver):
-            self.btn_info.setText("ⓘ  Info")
-            self.write_log(f"[update] Đang dùng bản mới nhất (v{lver}, release mới nhất: {info.get('tag')}).")
+            self.dot.hide()
+            self.btn_bell.setToolTip("You are up to date")
+            self.write_log(f"[update] Up to date (v{lver}, latest release {info.get('tag')}).")
             if not silent:
-                QMessageBox.information(self, "Update", f"Bạn đang dùng bản mới nhất (v{lver}).")
+                QMessageBox.information(self, "Update", f"You are using the latest version (v{lver}).")
             return
-        self.btn_info.setText("ⓘ  Info  ●")
-        self.btn_info.setToolTip(f"Có bản mới {info.get('tag')} — mở Info để update")
-        self.lbl_update_status.setText(f"<b style='color:#6fd36f'>Có bản mới {info.get('tag')}</b> "
-                                       f"({info.get('date', '')}). Đang dùng v{lver}.")
+        self.dot.show()
+        self.btn_bell.setToolTip(f"New version {info.get('tag')} available")
+        self.lbl_update_status.setText(f"<b style='color:{GREEN}'>New version {info.get('tag')} available</b> "
+                                       f"({info.get('date', '')}). You are on v{lver}.")
         notes = info.get("notes", "")
         if len(notes) > 900:
             notes = notes[:900] + "..."
-        msg = (f"Có bản mới: {info.get('name')}  ({info.get('date', '')})\n"
-               f"Hiện tại: v{lver}  →  Mới: v{rver}\n\n{notes}\n\n"
-               f"Cập nhật ngay? (App sẽ tự khởi động lại)")
+        msg = (f"A new version is available: {info.get('name')}  ({info.get('date', '')})\n"
+               f"Current: v{lver}  →  New: v{rver}\n\n{notes}\n\n"
+               f"Update now? (The app will restart)")
         if QMessageBox.question(self, "Update", msg) != QMessageBox.Yes:
             return
         self.btn_update.setEnabled(False)
-        self.btn_update.setText("Đang tải...")
+        self.btn_update.setText("  Downloading...")
         th = UpdateInstallThread(info)
         th.log.connect(lambda s: self.write_log("[update] " + s))
         th.done.connect(self._on_update_installed)
@@ -1287,11 +1917,11 @@ class MainWindow(QMainWindow):
 
     def _on_update_installed(self, ok, err):
         self.btn_update.setEnabled(True)
-        self.btn_update.setText("⟳  Kiểm tra update")
+        self.btn_update.setText("  Check for updates")
         if not ok:
-            QMessageBox.critical(self, "Update", f"Cập nhật thất bại:\n{err}")
+            QMessageBox.critical(self, "Update", f"Update failed:\n{err}")
             return
-        QMessageBox.information(self, "Update", "Cập nhật xong. App sẽ khởi động lại.")
+        QMessageBox.information(self, "Update", "Update installed. The app will now restart.")
         self._remember_unchecked()
         save_settings(self._collect_settings())
         subprocess.Popen([sys.executable, os.path.abspath(__file__)], cwd=APP_DIR)
@@ -1306,10 +1936,13 @@ def main():
         except Exception:
             pass
     app = QApplication(sys.argv)
+    app.setApplicationName(APP_NAME)
     app.setStyleSheet(build_style())
-    ico = os.path.join(APP_DIR, "icon.ico")
-    if os.path.isfile(ico):
-        app.setWindowIcon(QIcon(ico))
+    for ico in ("icon.ico", os.path.join("ui", "icon.png")):
+        p = os.path.join(APP_DIR, ico)
+        if os.path.isfile(p):
+            app.setWindowIcon(QIcon(p))
+            break
     w = MainWindow()
     w.show()
     sys.exit(app.exec())

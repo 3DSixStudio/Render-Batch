@@ -96,11 +96,11 @@ def parse_args():
 
 def enable_gpu_rendering(scene):
     if scene.render.engine != 'CYCLES':
-        print(f"!!! Engine hien tai la '{scene.render.engine}', khong phai CYCLES -> bo qua GPU.")
+        print(f"!!! Render engine is '{scene.render.engine}', not CYCLES -> GPU option skipped.")
         return
     addon = bpy.context.preferences.addons.get("cycles")
     if not addon:
-        print("!!! Khong tim thay Cycles addon preferences -> bo qua GPU.")
+        print("!!! Cycles add-on preferences not found -> GPU option skipped.")
         return
     cprefs = addon.preferences
     chosen = None
@@ -117,12 +117,12 @@ def enable_gpu_rendering(scene):
             continue
     if chosen:
         scene.cycles.device = 'GPU'
-        print(f"=== GPU Rendering: BAT ({chosen}) ===")
+        print(f"=== GPU rendering: ON ({chosen}) ===")
         for d in cprefs.devices:
             if d.use:
-                print(f"   -> Dung: {d.name} ({d.type})")
+                print(f"   -> Using: {d.name} ({d.type})")
     else:
-        print("!!! Khong tim thay GPU kha dung -> render bang CPU.")
+        print("!!! No usable GPU found -> rendering on CPU.")
 
 
 # ---------------------------------------------------------------------------
@@ -204,10 +204,10 @@ def render_still(scene, filepath):
     scene.render.filepath = filepath
     scene.render.image_settings.file_format = FILE_FORMAT
     start = time.time()
-    print(f"  -> [BAT DAU {datetime.datetime.now():%H:%M:%S}] Rendering: {filepath}")
+    print(f"  -> [START {datetime.datetime.now():%H:%M:%S}] Rendering: {filepath}")
     bpy.ops.render.render(write_still=True)
     elapsed = time.time() - start
-    print(f"  -> [XONG {datetime.datetime.now():%H:%M:%S}] Mat {elapsed:.1f} giay -> {filepath}")
+    print(f"  -> [DONE {datetime.datetime.now():%H:%M:%S}] took {elapsed:.1f}s -> {filepath}")
     return elapsed
 
 
@@ -336,7 +336,7 @@ def do_scan(args):
     with open(args.scan_json, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
     n_items = sum(len(c["items"]) for c in plan) + len(custom)
-    print(f"=== SCAN XONG: {len(plan)} collection, {n_items} anh ===")
+    print(f"=== SCAN COMPLETE: {len(plan)} collection(s), {n_items} image(s) ===")
     mark("scan_done", path=args.scan_json)
 
 
@@ -364,7 +364,7 @@ def run_item(scene, item, col_info, counter, action):
         mark("done", i=counter.index, key=item["key"], path=item["filepath"], sec=round(elapsed, 1))
     except Exception as e:
         counter.fail += 1
-        print(f"!!! LOI khi render {item['key']}: {e}")
+        print(f"!!! ERROR while rendering {item['key']}: {e}")
         traceback.print_exc()
         mark("error", i=counter.index, key=item["key"], msg=str(e))
 
@@ -446,7 +446,7 @@ def do_render(args):
     global RES_PERCENT
     RES_PERCENT = max(1, min(100, args.percent))
     if not args.output:
-        print("!!! Thieu --output")
+        print("!!! Missing --output")
         sys.exit(1)
     output_dir = os.path.abspath(args.output)
     os.makedirs(output_dir, exist_ok=True)
@@ -469,21 +469,21 @@ def do_render(args):
 
     total = sum(len(c["items"]) for c in plan) + len(custom)
     if total == 0:
-        print("!!! Khong co anh nao can render (khong tim thay Scs_N/Icon_N hoac khong co muc nao duoc chon).")
+        print("!!! Nothing to render (no Scs_N/Icon_N collections found, or nothing selected).")
         mark("finish", ok=0, fail=0, total=0, sec=0)
         return
 
-    print(f"=== Se render {total} anh trong {len(plan)} collection ===")
+    print(f"=== Rendering {total} image(s) in {len(plan)} collection(s) ===")
     for c in plan:
-        print(f"   - {c['name']}: {len(c['items'])} anh | {c['resolution'][0]}x{c['resolution'][1]} | frame {c['frame']}")
+        print(f"   - {c['name']}: {len(c['items'])} image(s) | {c['resolution'][0]}x{c['resolution'][1]} | frame {c['frame']}")
     if custom:
-        print(f"   - Custom: {len(custom)} anh")
+        print(f"   - Custom: {len(custom)} image(s)")
     mark("total", total=total)
 
     get_cached_all_object_names("Setup")
     get_cached_all_object_names("Map")
 
-    print("\n*** Lan render DAU TIEN co the mat vai phut de bien dich shader / load scene vao GPU.\n")
+    print("\n*** The FIRST image can take a few minutes (shader compile / loading the scene to the GPU).\n")
 
     counter = Counter(total)
     t0 = time.time()
@@ -494,7 +494,7 @@ def do_render(args):
 
     sec = time.time() - t0
     m, s = divmod(sec, 60)
-    print(f"\n=== HOAN TAT | {counter.ok} OK, {counter.fail} loi | Tong: {int(m)} phut {s:.1f} giay ===")
+    print(f"\n=== FINISHED | {counter.ok} OK, {counter.fail} failed | Total: {int(m)} min {s:.1f} s ===")
     mark("finish", ok=counter.ok, fail=counter.fail, total=total, sec=round(sec, 1))
     if counter.fail:
         sys.exit(2)
@@ -516,8 +516,8 @@ def apply_custom_resolutions(args):
             if res:
                 RESOLUTIONS[prefix] = res
             else:
-                print(f"!!! Bo qua --{key.replace('_', '-')} '{val}' (sai dinh dang, can dang 2796x2048)")
-    print(f"=== Size anh: Scs {RESOLUTIONS['Scs'][0]}x{RESOLUTIONS['Scs'][1]} | "
+                print(f"!!! Ignoring --{key.replace('_', '-')} '{val}' (invalid, expected e.g. 2796x2048)")
+    print(f"=== Image size: Scs {RESOLUTIONS['Scs'][0]}x{RESOLUTIONS['Scs'][1]} | "
           f"Icon {RESOLUTIONS['Icon'][0]}x{RESOLUTIONS['Icon'][1]} ===")
 
 

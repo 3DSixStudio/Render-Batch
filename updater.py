@@ -57,12 +57,12 @@ def check_remote():
         rel = json.loads(_get(f"https://api.github.com/repos/{OWNER}/{REPO}/releases/latest"))
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            raise RuntimeError("Repo chua co Release nao (hoac repo private).")
+            raise RuntimeError("The repository has no releases yet (or it is private).")
         if e.code == 403:
-            raise RuntimeError("GitHub tam gioi han so lan kiem tra (rate limit). Thu lai sau it phut.")
+            raise RuntimeError("GitHub rate limit reached. Please try again in a few minutes.")
         raise
     except urllib.error.URLError as e:
-        raise RuntimeError(f"Khong ket noi duoc GitHub: {e.reason}")
+        raise RuntimeError(f"Could not connect to GitHub: {e.reason}")
 
     download = None
     for a in rel.get("assets", []):
@@ -90,19 +90,19 @@ def is_newer(remote, local_ver):
 
 def download_and_install(remote, log=print):
     url = remote["download_url"]
-    log(f"Dang tai {remote.get('tag')}: {url}")
+    log(f"Downloading {remote.get('tag')}: {url}")
     data = _get(url, timeout=180)
-    log(f"Da tai {len(data) / 1024:.0f} KB, dang giai nen...")
+    log(f"Downloaded {len(data) / 1024:.0f} KB, extracting...")
 
     zf = zipfile.ZipFile(io.BytesIO(data))
     files = [n for n in zf.namelist() if not n.endswith("/")]
     if not files:
-        raise RuntimeError("File zip rong.")
+        raise RuntimeError("The downloaded zip is empty.")
     # Neu moi file nam chung 1 thu muc goc (vd: Render-Batch/...) thi bo thu muc do
     tops = {n.split("/")[0] for n in files}
     strip = (tops.pop() + "/") if len(tops) == 1 and all("/" in n for n in files) else ""
     if not any(n[len(strip):] == "scs_batch_render_app.py" for n in files):
-        raise RuntimeError("Goi tai ve khong dung cau truc (khong thay scs_batch_render_app.py).")
+        raise RuntimeError("Unexpected package layout (scs_batch_render_app.py not found).")
 
     backup = os.path.join(APP_DIR, "_backup_update", datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
     count = 0
@@ -123,5 +123,5 @@ def download_and_install(remote, log=print):
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump({"tag": remote.get("tag"),
                    "installed_at": datetime.datetime.now().isoformat(timespec="seconds")}, f, indent=1)
-    log(f"Da cap nhat {count} file len {remote.get('tag')}. Ban cu luu tai: {backup}")
+    log(f"Updated {count} file(s) to {remote.get('tag')}. Previous files backed up to: {backup}")
     return count

@@ -1,48 +1,51 @@
 # SCS Batch Render
 
-App Windows (PySide6) để render hàng loạt các collection `Scs_N` / `Icon_N` trong file Blender đã setup sẵn, chạy Blender ở chế độ background (không mở giao diện Blender).
+<img src="ui/icon.png" width="72" align="right">
 
-## Cài & chạy
+Windows desktop app (PySide6) that batch renders the `Scs_N` / `Icon_N` collections of a prepared Blender file by running Blender in background mode (the Blender UI never opens).
 
-1. Cài **Python 3.10+** từ https://www.python.org/downloads/ (tick *Add python.exe to PATH*).
-2. Vào [Releases](https://github.com/3DSixStudio/Render-Batch/releases/latest), tải file `SCS_Batch_Render_vX.Y.Z.zip` và giải nén vào một thư mục cố định.
-3. Chạy **`run.bat`**. Lần đầu nó tự cài PySide6.
-4. (Tùy chọn) chạy `Tao_Shortcut_Desktop.bat` để tạo shortcut ngoài Desktop.
+Created by **Hari**.
 
-## Tính năng
+## Install & run
 
-- **Tự dò blender.exe**: registry, Program Files, mọi thư viện Steam, `%LOCALAPPDATA%`, Scoop, PATH. Danh sách hiện trong combobox, mặc định chọn bản mới nhất; có nút *Chọn...* để chỉ tay.
-- **File .blend**: chọn hoặc **kéo thả** vào cửa sổ, app tự *Quét scene*.
-- **Danh sách trong scene**: đếm số collection/ảnh Scs, Icon, Custom; tick box theo từng ảnh (Map, Map event, Object, Custom).
-  - *Render tất cả* hoặc *Chỉ render mục được tích* (lựa chọn tick được nhớ theo từng file .blend).
-- **Dừng ngay**: kill Blender lập tức.
-- **Màn hình Đang render**: mục đang render, resolution/frame, tiến độ sample, tổng n/m, thời gian và ước tính còn lại, thumbnail ảnh vừa xong (bấm để mở).
-- **Log** đầy đủ như bản .bat, có lưu log ra file.
-- **Update online** qua GitHub Releases: chỉ nhận bản đã phát hành (Release mới nhất); bản cũ được backup vào `_backup_update/`.
-- Ô **Độ phân giải %** để render thử nhanh (100% = full).
+1. Install **Python 3.10+** from https://www.python.org/downloads/ (tick *Add python.exe to PATH*).
+2. Download the latest `SCS_Batch_Render_vX.Y.Z.zip` from [Releases](https://github.com/3DSixStudio/Render-Batch/releases/latest) and unzip it to a permanent folder.
+3. Run **`run.bat`**. The first run installs PySide6 automatically.
+4. Optional: run `Tao_Shortcut_Desktop.bat` to create a Desktop shortcut (with the app icon).
 
-## Quy tắc render
+## Features
 
-| Collection | Resolution | Frame |
+- Dashboard UI: stat cards, live progress ring, scene item counts (Scs / Icon / Custom), recent renders.
+- **Settings** popup: Blender executable (auto-detected from registry, Program Files, all Steam libraries, PATH...), GPU rendering, start frame, image size for Scs_N / Icon_N and resolution scale.
+- **Info** popup: about the app and **Update** (checks GitHub Releases, optional check on start-up, previous files backed up to `_backup_update/`).
+- Drag & drop a `.blend` onto the window to load and scan it.
+- Scene items with check boxes, search and filter; render **all** or **checked only** (check state remembered per .blend).
+- **Stop Now** kills Blender immediately. Full render log, saveable to a file.
+
+## Render rules
+
+| Collection | Default size | Frame |
 |---|---|---|
 | `Scs_N` | 2796 × 2048 | Start + (N − 1) |
 | `Icon_N` | 2048 × 2048 | Start + (N − 1) |
 
-- Mỗi object gốc (empty/mesh top-level) trong collection → 1 ảnh, object con hiện theo.
-- `Setup` luôn hiện. `Map` render riêng (1 ảnh, hoặc 1 ảnh / `Event_` có `scs_event_active`), luôn ẩn trong ảnh object.
-- Object có `scs_render_separate = True` render riêng ở cuối, dùng frame gốc của scene.
-- Thứ tự: Scs trước, Icon sau, mỗi nhóm tăng dần theo số.
+- Every root object (top-level empty/mesh) in a collection → one image; its children are shown with it.
+- `Setup` is always visible. `Map` is rendered as its own image (or one image per `Event_` with `scs_event_active`) and is always hidden in object images.
+- Objects with `scs_render_separate = True` are rendered last, at the scene's original frame.
+- Order: Scs first, then Icon, each ascending by number.
 
-## Chạy không cần UI
+## Command line (no UI)
 
-`SCS_Batch_Render_CLI.bat`, hoặc:
+`SCS_Batch_Render_CLI.bat`, or:
 
 ```
-blender --background scene.blend --python scs_render_core.py --python-exit-code 1 -- --output D:\renders [--gpu] [--only Scs_1,Icon_2] [--percent 25]
+blender --background scene.blend --python scs_render_core.py --python-exit-code 1 -- --output D:\renders [--gpu] [--only Scs_1,Icon_2] [--scs-res 2796x2048] [--icon-res 2048x2048] [--percent 25]
 ```
 
-## Phát hành bản mới (tự động)
+## Releasing (automatic)
 
-1. Sửa code, ghi thay đổi vào `release_notes.md`, tăng số trong `version.txt` (vd `1.0.1`).
-2. Push lên `main` → GitHub Actions (`.github/workflows/release.yml`) tự đóng gói `SCS_Batch_Render_v1.0.1.zip` và tạo Release `v1.0.1`.
-3. App của mọi người bấm *Update online* sẽ thấy bản mới. Push mà không đổi số version thì không tạo Release.
+1. Change the code, describe the changes in `release_notes.md`, bump `version.txt` (e.g. `1.1.1`).
+2. Push to `main` → GitHub Actions (`.github/workflows/release.yml`) packages `SCS_Batch_Render_v1.1.1.zip` and publishes release `v1.1.1`.
+3. Users click *Info → Check for updates*. Pushes without a version bump do not create a release.
+
+To regenerate the icon: `python tools/make_icon.py` (needs Pillow).

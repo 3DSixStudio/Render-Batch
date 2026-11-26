@@ -1,8 +1,10 @@
-**SCS Batch Render v1.0.2**
+**SCS Batch Render v1.1.0** — new dashboard UI
 
-- Thanh công cụ trên cùng bên trái: **⚙ Setting** và **ⓘ Info**, mỗi nút mở một popup.
-- **Setting**: chọn blender.exe (tự dò / Dò lại / Chọn...), chỉnh **size ảnh** Scs_N và Icon_N (px) + % độ phân giải, nút *Về mặc định*. Size được lưu lại cho lần sau.
-- **Info**: thông tin app (người làm app: Hari) và phần **Update** (kiểm tra / cập nhật, tự kiểm tra khi mở). Khi có bản mới, nút Info hiện dấu ●.
-- Màn hình chính hiện tóm tắt cấu hình (bản Blender, size Scs/Icon) — bấm vào để mở Setting.
+- Brand-new light **dashboard** design: sidebar navigation, search & filter bar, stat cards (images in scene, selected, rendered, elapsed / ETA), live progress ring, Scs / Icon / Custom counters, recent renders list.
+- The whole app is now in **English**.
+- New **app icon** (window, taskbar and Desktop shortcut).
+- **Settings** popup now holds: Blender executable, Force GPU, Start frame, image size (Scs / Icon) and resolution scale.
+- **Info** popup: created by Hari, GitHub link and **Update**. The bell shows a red dot when a new version is available.
+- Search box and filter (Scs / Icon / Custom / Maps / Objects) for scene items.
 
-**Đã có bản cũ:** mở app → bấm *Update*.
+**Already installed?** Open the app → Info → *Check for updates*.

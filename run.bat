@@ -1,5 +1,5 @@
 @echo off
-REM ===== SCS Batch Render - khoi dong app =====
+REM ===== SCS Batch Render - app launcher =====
 cd /d "%~dp0"
 
 set "PY="
@@ -9,18 +9,18 @@ if not defined PY (
     where python >nul 2>nul && (set "PY=python" & set "PYW=pythonw")
 )
 if not defined PY (
-    echo Khong tim thay Python tren may.
-    echo Hay cai Python 3.10+ tai https://www.python.org/downloads/  ^(nho tick "Add python.exe to PATH"^)
+    echo Python was not found on this computer.
+    echo Please install Python 3.10+ from https://www.python.org/downloads/  ^(tick "Add python.exe to PATH"^)
     pause
     exit /b 1
 )
 
 %PY% -c "import PySide6" >nul 2>nul
 if errorlevel 1 (
-    echo Lan dau chay: dang cai PySide6, vui long doi...
+    echo First run: installing PySide6, please wait...
     %PY% -m pip install --user -r "%~dp0requirements.txt"
     if errorlevel 1 (
-        echo Cai PySide6 that bai. Kiem tra mang roi chay lai.
+        echo Installing PySide6 failed. Check your internet connection and try again.
         pause
         exit /b 1
     )
