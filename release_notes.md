@@ -1,8 +1,5 @@
-**Render Batch v1.3.1** — skin renders
+**Render Batch v1.3.2** — bigger preview, Test button
 
-- Asset Render now knows the difference between **skins** (characters) and **objects** (eggs, blocks, items).
-- **Asset type: Auto** (default) - an FBX with a rig (armature) or "-Loop" in its name is rendered as a skin.
-- Skins: camera at eye level like a character portrait (Front 4°, 3/4 turned 22° at 6°), soft frontal light, smooth textures (no pixelation on clothes and faces).
-- Objects keep the previous look: camera a bit from above (Front 8°, 3/4 turned 35° at 20°), sharp pixel textures.
-- **Camera height** now defaults to **Auto** (the right angle for each type); set a number to override it.
-- You can force Object or Skin for the whole folder with the Asset type option.
+- **Bigger preview image** on both workspaces: the last finished image now fills its own **Preview** card and grows with the window.
+- The bottom row is now: **list** (narrower) · **Log** (next to the list) · **Preview**.
+- Asset Render: new **Test 1 file** button - renders only the selected file (or the first ticked one) with the current settings, saved in the `_Test` folder inside the output folder, so you can check the look before rendering everything.

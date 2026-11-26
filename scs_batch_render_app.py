@@ -140,6 +140,10 @@ QPushButton#danger { background:#fff0f2; color:#ff5b6e; border:1px solid #ffd0d6
     font-size:10.5pt; font-weight:800; border-radius:10px; }
 QPushButton#danger:hover { background:#ff5b6e; color:#ffffff; }
 QPushButton#danger:disabled { background:#fafbfd; color:#d0d3de; border-color:#eceef5; }
+QPushButton#test { background:#f1edff; color:#7c5cff; border:1px solid #d9d0ff; padding:10px 18px;
+    font-size:10.5pt; font-weight:800; border-radius:10px; }
+QPushButton#test:hover { background:#e6defe; border-color:#7c5cff; }
+QPushButton#test:disabled { background:#fafbfd; color:#d0d3de; border-color:#eceef5; }
 QPushButton#link { background:transparent; border:none; color:#8b90a5; padding:2px 4px; font-weight:600; }
 QPushButton#link:hover { color:#7c5cff; }
 QLabel#cfg { background:#f7f8fc; border:1px solid #eceef5; border-radius:8px; padding:7px 10px; color:#6b7086; }
@@ -332,6 +336,36 @@ class StatCard(QFrame):
         self.value.setText(str(value))
         if sub is not None:
             self.sub.setText(sub)
+
+
+class PreviewImage(QLabel):
+    """Image label that keeps the picture as large as the space allows (aspect kept)."""
+
+    def __init__(self, text=""):
+        super().__init__(text)
+        self.setObjectName("thumb")
+        self.setAlignment(Qt.AlignCenter)
+        self.setMinimumSize(160, 160)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setCursor(Qt.PointingHandCursor)
+        self._pm = None
+
+    def set_image(self, pm):
+        self._pm = pm
+        self._rescale()
+
+    def _rescale(self):
+        if self._pm is None or self._pm.isNull():
+            return
+        super().setPixmap(self._pm.scaled(max(1, self.width() - 12), max(1, self.height() - 12),
+                                          Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._rescale()
+
+    def sizeHint(self):
+        return QSize(320, 320)
 
 
 class Ring(QWidget):
@@ -622,7 +656,7 @@ class MainWindow(QMainWindow):
         return text if len(text) <= n else text[: n - 1] + "…"
 
     # ------------------------------------------------------------------ shared builders
-    def _workspace(self, title, subtitle, start_slot):
+    def _workspace(self, title, subtitle, start_slot, test_slot=None):
         """Page skeleton shared by both workspaces: header (title + Start/Stop) and a body layout."""
         page = QWidget()
         pv = QVBoxLayout(page)
@@ -644,6 +678,11 @@ class MainWindow(QMainWindow):
         stop.setEnabled(False)
         start = self._btn("  Start Render", start_slot, "primary", icon="play", icon_color="#ffffff")
         start.setMinimumWidth(170)
+        self._ws_test = None
+        if test_slot:
+            self._ws_test = self._btn("  Test 1 file", test_slot, "test", icon="image", icon_color=PURPLE,
+                                      tip="Render only the selected file (or the first ticked one) to check the look")
+            hrow.addWidget(self._ws_test)
         hrow.addWidget(stop)
         hrow.addWidget(start)
         pv.addLayout(hrow)
@@ -667,73 +706,56 @@ class MainWindow(QMainWindow):
         return l
 
     def _progress_card(self):
-        """Progress card shared by both workspaces: current item, sample bar, time, last image, log."""
-        card = Card("Progress", "Current image, last finished image and log")
+        """Shared by both workspaces: a Preview card (current item + big last image) and a Log card."""
         w = {}
-        top = QHBoxLayout()
-        top.setSpacing(16)
-        info = QVBoxLayout()
-        info.setSpacing(5)
+        card = Card("Preview", "Current image and the last finished image")
         w["now"] = QLabel("Idle")
         w["now"].setObjectName("nowTitle")
         w["now"].setWordWrap(True)
-        info.addWidget(w["now"])
+        card.lay.addWidget(w["now"])
         w["info"] = QLabel("Press Start Render to begin.")
         w["info"].setObjectName("sub")
         w["info"].setWordWrap(True)
-        info.addWidget(w["info"])
-        sr = QHBoxLayout()
-        sr.addWidget(self._field("Current image"))
-        sr.addStretch(1)
-        w["sample"] = QLabel("")
-        w["sample"].setObjectName("sub")
-        sr.addWidget(w["sample"])
-        info.addLayout(sr)
+        card.lay.addWidget(w["info"])
+        br = QHBoxLayout()
+        br.setSpacing(10)
         w["bar"] = QProgressBar()
         w["bar"].setRange(0, 100)
         w["bar"].setValue(0)
         w["bar"].setFixedHeight(8)
-        info.addWidget(w["bar"])
+        br.addWidget(w["bar"], 1)
+        w["sample"] = QLabel("")
+        w["sample"].setObjectName("sub")
+        w["sample"].setMinimumWidth(90)
+        w["sample"].setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        br.addWidget(w["sample"])
+        card.lay.addLayout(br)
         w["time"] = QLabel("")
         w["time"].setObjectName("sub")
         w["time"].setWordWrap(True)
-        info.addWidget(w["time"])
-        info.addStretch(1)
-        top.addLayout(info, 1)
-
-        tv = QVBoxLayout()
-        tv.setSpacing(3)
-        w["img"] = QLabel("No image yet")
-        w["img"].setObjectName("thumb")
-        w["img"].setAlignment(Qt.AlignCenter)
-        w["img"].setFixedSize(170, 136)
-        w["img"].setCursor(Qt.PointingHandCursor)
+        card.lay.addWidget(w["time"])
+        w["img"] = PreviewImage("No image yet")
         w["img"].setToolTip("Click to open the image")
-        tv.addWidget(w["img"])
+        card.lay.addWidget(w["img"], 1)
         w["cap"] = QLabel("Last finished image")
         w["cap"].setObjectName("sub")
         w["cap"].setAlignment(Qt.AlignCenter)
-        w["cap"].setFixedWidth(170)
         w["cap"].setWordWrap(True)
-        tv.addWidget(w["cap"])
-        top.addLayout(tv)
-        card.lay.addLayout(top)
+        card.lay.addWidget(w["cap"])
+        w["card"] = card
 
-        lh = QHBoxLayout()
-        lh.addWidget(self._field("Log"))
-        lh.addStretch(1)
+        lc = Card("Log", "Blender output")
         w["log"] = QPlainTextEdit()
         w["log"].setObjectName("log")
         w["log"].setReadOnly(True)
         w["log"].setMaximumBlockCount(30000)
         log = w["log"]
-        lh.addWidget(self._btn("Save", lambda: self.save_log(log), "pill"))
-        lh.addWidget(self._btn("Clear", log.clear, "pill"))
-        card.lay.addLayout(lh)
-        card.lay.addWidget(log, 1)
+        lc.head.addWidget(self._btn("Save", lambda: self.save_log(log), "pill"))
+        lc.head.addWidget(self._btn("Clear", log.clear, "pill"))
+        lc.lay.addWidget(log, 1)
         w["verbose"] = QCheckBox("Show Blender sample lines")
-        card.lay.addWidget(w["verbose"])
-        w["card"] = card
+        lc.lay.addWidget(w["verbose"])
+        w["log_card"] = lc
         return w
 
     # ================================================================== Icon & SCS workspace
@@ -825,12 +847,13 @@ class MainWindow(QMainWindow):
 
         row2 = QHBoxLayout()
         row2.setSpacing(14)
-        row2.addWidget(self._build_items_card(), 11)
+        row2.addWidget(self._build_items_card(), 8)
         p = self._progress_card()
         self.lbl_now, self.lbl_now_info, self.lbl_sample = p["now"], p["info"], p["sample"]
         self.pb_item, self.lbl_time, self.img, self.lbl_img = p["bar"], p["time"], p["img"], p["cap"]
         self.log, self.chk_verbose = p["log"], p["verbose"]
         self.img.mousePressEvent = lambda e: self.open_last_image()
+        row2.addWidget(p["log_card"], 6)
         row2.addWidget(p["card"], 9)
         pv.addLayout(row2, 1)
         return page
@@ -1089,7 +1112,8 @@ class MainWindow(QMainWindow):
     def _build_asset_page(self):
         page, pv, self.a_status, self.a_btn_start, self.a_btn_stop = self._workspace(
             "Asset Render", "Render a folder of FBX files - camera, lights and framing are set up automatically.",
-            self.asset_start)
+            self.asset_start, test_slot=lambda: self.asset_start(test=True))
+        self.a_btn_test = self._ws_test
 
         self.a_st_total, self.a_st_selected, self.a_st_done, self.a_st_time = self._stats(pv, [
             ("FBX Files", "#eaf3ff", BLUE, "0", "Choose a folder"),
@@ -1241,13 +1265,14 @@ class MainWindow(QMainWindow):
         self.a_lbl_count = QLabel("No folder selected.")
         self.a_lbl_count.setObjectName("sub")
         c3.lay.addWidget(self.a_lbl_count)
-        row2.addWidget(c3, 11)
+        row2.addWidget(c3, 7)
 
         p = self._progress_card()
         self.a_lbl_now, self.a_lbl_info, self.a_lbl_sample = p["now"], p["info"], p["sample"]
         self.a_bar, self.a_lbl_time, self.a_img, self.a_lbl_img = p["bar"], p["time"], p["img"], p["cap"]
         self.a_log, self.a_chk_verbose = p["log"], p["verbose"]
         self.a_img.mousePressEvent = lambda e: self._asset_open_path(self.a_last_image)
+        row2.addWidget(p["log_card"], 6)
         row2.addWidget(p["card"], 9)
         pv.addLayout(row2, 1)
 
@@ -1410,7 +1435,7 @@ class MainWindow(QMainWindow):
         s["asset_pixel"] = self.a_chk_pixel.isChecked()
 
     # ---- run
-    def asset_start(self):
+    def asset_start(self, test=False):
         if self._busy():
             return
         exe = self.blender_exe()
@@ -1430,9 +1455,20 @@ class MainWindow(QMainWindow):
             out = os.path.join(folder, "Render")
             self.a_ed_out.setText(out)
         jobs = []
-        for rel, it in self.a_items.items():
-            if it.checkState(0) == Qt.Checked:
-                jobs.append({"key": rel, "path": os.path.join(folder, rel), "name": it.data(1, Qt.UserRole)})
+        if test:
+            it = self.a_tree.currentItem()
+            if it is None:
+                it = next((i for i in self.a_items.values() if i.checkState(0) == Qt.Checked), None)
+            if it is None:
+                QMessageBox.information(self, APP_NAME, "There is no FBX file to test. Choose a folder first.")
+                return
+            rel = it.data(0, Qt.UserRole)
+            jobs.append({"key": rel, "path": os.path.join(folder, rel), "name": it.data(1, Qt.UserRole)})
+            out = os.path.join(out, "_Test")
+        else:
+            for rel, it in self.a_items.items():
+                if it.checkState(0) == Qt.Checked:
+                    jobs.append({"key": rel, "path": os.path.join(folder, rel), "name": it.data(1, Qt.UserRole)})
         if not jobs:
             QMessageBox.information(self, APP_NAME, "No FBX file is ticked.")
             return
@@ -1478,7 +1514,11 @@ class MainWindow(QMainWindow):
             args.append("--smooth-textures")
         if self.chk_gpu.isChecked():
             args.append("--gpu")
-        self.a_log.appendPlainText(f"\n=== ASSET RENDER: {len(jobs)} FBX file(s) -> {out} ===")
+        if test:
+            self.a_log.appendPlainText(f"\n=== TEST RENDER: {jobs[0]['key']} -> {out} ===")
+            self.a_status.setText(f"Test render: {jobs[0]['key']}  (saved in the _Test folder)")
+        else:
+            self.a_log.appendPlainText(f"\n=== ASSET RENDER: {len(jobs)} FBX file(s) -> {out} ===")
         self._start_process(exe, args, "asset")
 
     def _asset_line(self, line):
@@ -1541,8 +1581,7 @@ class MainWindow(QMainWindow):
         if pm.isNull():
             return
         self.a_last_image = path
-        self.a_img.setPixmap(pm.scaled(self.a_img.width() - 8, self.a_img.height() - 8,
-                                       Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self.a_img.set_image(pm)
         self.a_img.setToolTip(path)
         self.a_lbl_img.setText(self._elide(os.path.basename(path), 24) + f"\n{pm.width()}×{pm.height()}")
 
@@ -1842,6 +1881,7 @@ class MainWindow(QMainWindow):
 
     def _set_running(self, running):
         self.a_btn_start.setEnabled(not running)
+        self.a_btn_test.setEnabled(not running)
         self.a_btn_stop.setEnabled(running)
         self.btn_render.setEnabled(not running)
         self.btn_scan.setEnabled(not running)
@@ -2304,8 +2344,7 @@ class MainWindow(QMainWindow):
         if pm.isNull():
             return
         self.last_image = path
-        self.img.setPixmap(pm.scaled(self.img.width() - 8, self.img.height() - 8,
-                                     Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self.img.set_image(pm)
         self.lbl_img.setText(self._elide(os.path.basename(path), 24) + f"\n{pm.width()}×{pm.height()}")
         self.lbl_img.setToolTip(path)
 
