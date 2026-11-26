@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QLineEdit, QPushButton, QComboBox, QFileDialog, QCheckBox, QRadioButton, QButtonGroup,
     QSpinBox, QTreeWidget, QTreeWidgetItem, QPlainTextEdit, QProgressBar, QMessageBox,
-    QHeaderView, QSizePolicy, QFrame, QDialog, QGraphicsDropShadowEffect, QScrollArea,
+    QHeaderView, QSizePolicy, QFrame, QGraphicsDropShadowEffect, QScrollArea, QStackedWidget,
 )
 
 import blender_finder
@@ -581,10 +581,11 @@ class MainWindow(QMainWindow):
         bot.addWidget(self._build_log_card(), 9)
         cv.addLayout(bot, 1)
 
-        outer.addWidget(content, 1)
-
-        self._build_settings_dialog()
-        self._build_info_dialog()
+        self.stack = QStackedWidget()
+        self.stack.addWidget(content)                        # 0 dashboard
+        self.stack.addWidget(self._build_settings_page())    # 1 settings
+        self.stack.addWidget(self._build_info_page())        # 2 info
+        outer.addWidget(self.stack, 1)
 
     # ------------------------------------------------------------------ sidebar (navigation only)
     def _build_sidebar(self):
@@ -621,19 +622,24 @@ class MainWindow(QMainWindow):
 
         self.nav_buttons = {}
 
-        def nav(key, text, icon, slot):
-            b = self._btn("  " + text, slot, "nav", icon=icon)
+        self.nav_group = QButtonGroup(self)
+        self.nav_group.setExclusive(True)
+
+        def nav(key, text, icon):
+            b = self._btn("  " + text, lambda: self.show_page(key), "nav", icon=icon)
             b.setIconSize(QSize(18, 18))
+            b.setCheckable(True)
+            b.setProperty("icon_name", icon)
+            self.nav_group.addButton(b)
             self.nav_buttons[key] = b
             v.addWidget(b)
             return b
 
-        d = nav("dash", "Dashboard", "dashboard", lambda: None)
-        d.setCheckable(True)
-        d.setChecked(True)
-        d.setIcon(make_icon("dashboard", PURPLE))
-        nav("settings", "Settings", "settings", lambda: self.open_settings())
-        self.nav_info = nav("info", "Info && Update", "info", lambda: self.open_info())
+        nav("dash", "Dashboard", "dashboard")
+        nav("settings", "Settings", "settings")
+        self.nav_info = nav("info", "Info && Update", "info")
+        self.nav_buttons["dash"].setChecked(True)
+        self._refresh_nav_icons()
         v.addStretch(1)
 
         prof = QFrame()
@@ -692,7 +698,7 @@ class MainWindow(QMainWindow):
         card.lay.addLayout(g)
 
         card.lay.addSpacing(4)
-        cl = QLabel("Render settings  (change them in Settings)")
+        cl = QLabel("Render settings  (change them on the Settings page)")
         cl.setObjectName("fieldLabel")
         card.lay.addWidget(cl)
         self.btn_cfg = QLabel("")
@@ -833,14 +839,30 @@ class MainWindow(QMainWindow):
         sp.valueChanged.connect(self._on_size_changed)
         return sp
 
-    def _dialog(self, title, width):
-        dlg = QDialog(self)
-        dlg.setWindowTitle(title)
-        dlg.setMinimumWidth(width)
-        outer = QVBoxLayout(dlg)
-        outer.setContentsMargins(18, 18, 18, 18)
+    def _page(self, title, subtitle):
+        """A page in the main area (same header style as the Dashboard)."""
+        page = QWidget()
+        pv = QVBoxLayout(page)
+        pv.setContentsMargins(26, 20, 26, 20)
+        pv.setSpacing(16)
+        col = QVBoxLayout()
+        col.setSpacing(0)
+        h = QLabel(title)
+        h.setObjectName("h1")
+        col.addWidget(h)
+        sub = QLabel(subtitle)
+        sub.setObjectName("sub")
+        col.addWidget(sub)
+        pv.addLayout(col)
+        body = QWidget()
+        body.setMaximumWidth(900)
+        outer = QVBoxLayout(body)
+        outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(14)
-        return dlg, outer
+        pv.addWidget(body, 0, Qt.AlignLeft)
+        pv.addStretch(1)
+        body.setMinimumWidth(760)
+        return page, outer
 
     def _dlg_card(self, title):
         f = QFrame()
@@ -854,9 +876,8 @@ class MainWindow(QMainWindow):
         v.addWidget(t)
         return f, v
 
-    def _build_settings_dialog(self):
-        dlg, outer = self._dialog("Settings", 780)
-        dlg.setMinimumHeight(560)
+    def _build_settings_page(self):
+        page, outer = self._page("Settings", "Blender, render options and image size. Changes are saved automatically.")
 
         f, v = self._dlg_card("Blender executable")
         row = QHBoxLayout()
@@ -935,35 +956,33 @@ class MainWindow(QMainWindow):
         v.addLayout(g)
         outer.addWidget(f)
 
-        outer.addStretch(1)
-        bb = QHBoxLayout()
-        bb.addStretch(1)
-        bb.addWidget(self._btn("Done", dlg.close, "primary"))
-        outer.addLayout(bb)
-        dlg.finished.connect(lambda *_: save_settings(self._collect_settings()))
-        self.dlg_settings = dlg
+        return page
 
-    def _build_info_dialog(self):
-        dlg, outer = self._dialog("Info", 540)
-        dlg.setMinimumHeight(600)
+    def _build_info_page(self):
+        page, outer = self._page("Info & Update", "About this app and software updates")
 
-        head = QVBoxLayout()
-        head.setSpacing(4)
+        f = QFrame()
+        f.setObjectName("dlgCard")
+        shadow(f, 20, 16, 4)
+        hh = QHBoxLayout(f)
+        hh.setContentsMargins(16, 14, 16, 14)
+        hh.setSpacing(14)
         logo = QLabel()
-        logo.setAlignment(Qt.AlignCenter)
         ico = os.path.join(APP_DIR, "ui", "icon.png")
         if os.path.isfile(ico):
-            logo.setPixmap(QPixmap(ico).scaled(72, 72, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        head.addWidget(logo)
+            logo.setPixmap(QPixmap(ico).scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        hh.addWidget(logo)
+        tc = QVBoxLayout()
+        tc.setSpacing(0)
         t = QLabel("SCS Batch Render")
         t.setObjectName("h1")
-        t.setAlignment(Qt.AlignCenter)
-        head.addWidget(t)
+        tc.addWidget(t)
         ver = QLabel(f"Version {APP_VERSION}")
         ver.setObjectName("sub")
-        ver.setAlignment(Qt.AlignCenter)
-        head.addWidget(ver)
-        outer.addLayout(head)
+        tc.addWidget(ver)
+        hh.addLayout(tc)
+        hh.addStretch(1)
+        outer.addWidget(f)
 
         f, v = self._dlg_card("About")
         g = QGridLayout()
@@ -1014,26 +1033,28 @@ class MainWindow(QMainWindow):
 
         foot = QLabel(f"© {time.strftime('%Y')} {APP_AUTHOR}. All rights reserved.")
         foot.setObjectName("sub")
-        foot.setAlignment(Qt.AlignCenter)
         outer.addWidget(foot)
-        bb = QHBoxLayout()
-        bb.addStretch(1)
-        bb.addWidget(self._btn("Close", dlg.close))
-        outer.addLayout(bb)
-        dlg.finished.connect(lambda *_: save_settings(self._collect_settings()))
-        self.dlg_info = dlg
+        return page
 
-    def _popup(self, dlg):
-        dlg.setWindowModality(Qt.ApplicationModal)
-        dlg.show()
-        dlg.raise_()
-        dlg.activateWindow()
+    # ------------------------------------------------------------------ page switching
+    PAGES = {"dash": 0, "settings": 1, "info": 2}
+
+    def show_page(self, key):
+        if self.stack.currentIndex() == self.PAGES["settings"] and key != "settings":
+            save_settings(self._collect_settings())
+        self.stack.setCurrentIndex(self.PAGES[key])
+        self.nav_buttons[key].setChecked(True)
+        self._refresh_nav_icons()
+
+    def _refresh_nav_icons(self):
+        for b in self.nav_buttons.values():
+            b.setIcon(make_icon(b.property("icon_name"), PURPLE if b.isChecked() else SUB))
 
     def open_settings(self):
-        self._popup(self.dlg_settings)
+        self.show_page("settings")
 
     def open_info(self):
-        self._popup(self.dlg_info)
+        self.show_page("info")
 
     # ------------------------------------------------------------------ sizes
     def res_for(self, prefix):
@@ -1252,7 +1273,7 @@ class MainWindow(QMainWindow):
         blend = self.ed_blend.text().strip().strip('"')
         out = self.ed_out.text().strip().strip('"')
         if not exe or not os.path.isfile(exe):
-            QMessageBox.warning(self, APP_NAME, "No valid blender.exe selected.\nPlease choose one in Settings.")
+            QMessageBox.warning(self, APP_NAME, "No valid blender.exe selected.\nPlease choose one on the Settings page.")
             self.open_settings()
             return None
         if not blend or not os.path.isfile(blend):
