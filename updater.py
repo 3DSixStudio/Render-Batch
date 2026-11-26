@@ -86,8 +86,10 @@ def is_newer(remote, local_ver, local_sha):
         return rv > lv
     if remote.get("sha") and local_sha:
         return remote["sha"] != local_sha
+    if rv and lv:
+        return False  # cung version, chua co sha (vd: vua tai ZIP) -> coi nhu moi nhat
     if remote.get("sha") and not local_sha:
-        return True   # chua tung update -> khong biet, cho phep update
+        return True   # khong doc duoc version -> cho phep update
     return False
 
 
