@@ -1,5 +1,5 @@
 @echo off
-REM ===== SCS Batch Render - app launcher =====
+REM ===== Render Batch - app launcher =====
 cd /d "%~dp0"
 
 set "PY="

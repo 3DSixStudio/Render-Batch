@@ -1,4 +1,4 @@
-# SCS Batch Render
+# Render Batch
 
 <img src="ui/icon.png" width="72" align="right">
 
@@ -9,9 +9,9 @@ Created by **Hari**.
 ## Install & run
 
 1. Install **Python 3.10+** from https://www.python.org/downloads/ (tick *Add python.exe to PATH*).
-2. Download the latest `SCS_Batch_Render_vX.Y.Z.zip` from [Releases](https://github.com/3DSixStudio/Render-Batch/releases/latest) and unzip it to a permanent folder.
+2. Download the latest `Render_Batch_vX.Y.Z.zip` from [Releases](https://github.com/3DSixStudio/Render-Batch/releases/latest) and unzip it to a permanent folder.
 3. Run **`run.bat`**. The first run installs PySide6 automatically.
-4. Optional: run `Tao_Shortcut_Desktop.bat` to create a Desktop shortcut (with the app icon).
+4. Optional: run `Create_Desktop_Shortcut.bat` to create a Desktop shortcut (with the app icon).
 
 ## Features
 
@@ -36,7 +36,7 @@ Created by **Hari**.
 
 ## Command line (no UI)
 
-`SCS_Batch_Render_CLI.bat`, or:
+`Render_Batch_CLI.bat`, or:
 
 ```
 blender --background scene.blend --python scs_render_core.py --python-exit-code 1 -- --output D:\renders [--gpu] [--only Scs_1,Icon_2] [--scs-res 2796x2048] [--icon-res 2048x2048] [--percent 25]
@@ -45,7 +45,7 @@ blender --background scene.blend --python scs_render_core.py --python-exit-code 
 ## Releasing (automatic)
 
 1. Change the code, describe the changes in `release_notes.md`, bump `version.txt` (e.g. `1.1.1`).
-2. Push to `main` → GitHub Actions (`.github/workflows/release.yml`) packages `SCS_Batch_Render_v1.1.1.zip` and publishes release `v1.1.1`.
+2. Push to `main` → GitHub Actions (`.github/workflows/release.yml`) packages `Render_Batch_v1.1.1.zip` and publishes release `v1.1.1`.
 3. Users click *Info → Check for updates*. Pushes without a version bump do not create a release.
 
 To regenerate the icon: `python tools/make_icon.py` (needs Pillow).

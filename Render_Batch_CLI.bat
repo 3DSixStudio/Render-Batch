@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 REM ============================================================
-REM  SCS BATCH RENDER - command line version (no UI)
+REM  RENDER BATCH - command line version (no UI)
 REM  Uses the same scs_render_core.py as the app.
 REM ============================================================
 cd /d "%~dp0"

@@ -1,5 +1,6 @@
-**SCS Batch Render v1.1.2** — consistent navigation
+**Render Batch v1.1.3**
 
-- **Settings** and **Info & Update** are now full pages inside the app (no more popups), just like the Dashboard.
-- The sidebar works as a real menu: Dashboard / Settings / Info & Update, the current page is highlighted.
-- Settings are saved automatically when you leave the Settings page or close the app.
+- The app is now called **Render Batch** everywhere (window, sidebar, Info, release files, Desktop shortcut).
+- **Settings** and **Info & Update** pages now use the full window width: cards are laid out side by side instead of a narrow column.
+- Settings page shows a short "How rendering works" summary; Info page shows what's new in the installed version.
+- Renamed helper files: `Render_Batch_CLI.bat`, `Create_Desktop_Shortcut.bat`.

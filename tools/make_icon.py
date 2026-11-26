@@ -1,4 +1,4 @@
-"""Generate icon.ico + ui/icon.png for SCS Batch Render (run: python tools/make_icon.py)."""
+"""Generate icon.ico + ui/icon.png for Render Batch (run: python tools/make_icon.py)."""
 import os
 from PIL import Image, ImageDraw, ImageFilter
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-SCS Batch Render - Desktop app (PySide6)
+Render Batch - Desktop app (PySide6)
 Batch renders Scs_N / Icon_N collections by running Blender in background mode.
 Created by Hari  |  https://github.com/3DSixStudio/Render-Batch
 """
@@ -29,7 +29,7 @@ import updater
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CORE_SCRIPT = os.path.join(APP_DIR, "scs_render_core.py")
-APP_NAME = "SCS Batch Render"
+APP_NAME = "Render Batch"
 APP_AUTHOR = "Hari"
 DEFAULT_RES = {"Scs": (2796, 2048), "Icon": (2048, 2048)}
 
@@ -604,7 +604,7 @@ class MainWindow(QMainWindow):
         brand.addWidget(logo)
         bc = QVBoxLayout()
         bc.setSpacing(0)
-        b1 = QLabel("SCS RENDER")
+        b1 = QLabel("RENDER BATCH")
         b1.setObjectName("brand")
         bc.addWidget(b1)
         b2 = QLabel("Batch render tool")
@@ -854,14 +854,10 @@ class MainWindow(QMainWindow):
         sub.setObjectName("sub")
         col.addWidget(sub)
         pv.addLayout(col)
-        body = QWidget()
-        body.setMaximumWidth(900)
-        outer = QVBoxLayout(body)
+        outer = QVBoxLayout()
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(14)
-        pv.addWidget(body, 0, Qt.AlignLeft)
-        pv.addStretch(1)
-        body.setMinimumWidth(760)
+        pv.addLayout(outer, 1)
         return page, outer
 
     def _dlg_card(self, title):
@@ -874,6 +870,7 @@ class MainWindow(QMainWindow):
         t = QLabel(title)
         t.setObjectName("h2")
         v.addWidget(t)
+        v.setAlignment(Qt.AlignTop)
         return f, v
 
     def _build_settings_page(self):
@@ -897,11 +894,16 @@ class MainWindow(QMainWindow):
         v.addWidget(hint)
         outer.addWidget(f)
 
+        row2 = QHBoxLayout()
+        row2.setSpacing(14)
+        outer.addLayout(row2)
+
         f, v = self._dlg_card("Render options")
         ro = QGridLayout()
         ro.setHorizontalSpacing(10)
         ro.setVerticalSpacing(8)
-        self.chk_gpu = QCheckBox("Force GPU rendering (Cycles: OptiX / CUDA / HIP / Metal / oneAPI)")
+        self.chk_gpu = QCheckBox("Force GPU rendering (Cycles)")
+        self.chk_gpu.setToolTip("Tries OptiX, CUDA, HIP, Metal and oneAPI in that order")
         self.chk_gpu.toggled.connect(lambda *_: self._refresh_cfg_label())
         ro.addWidget(self.chk_gpu, 0, 0, 1, 3)
         sf = QLabel("Start frame")
@@ -913,12 +915,12 @@ class MainWindow(QMainWindow):
         self.sp_frame.setMinimumWidth(120)
         self.sp_frame.valueChanged.connect(self._on_size_changed)
         ro.addWidget(self.sp_frame, 1, 1)
-        fh = QLabel("Collection N renders at frame  Start + (N − 1)   (e.g. Scs_3 → frame 4)")
+        fh = QLabel("Collection N → frame Start + (N − 1)")
         fh.setObjectName("sub")
         ro.addWidget(fh, 1, 2)
         ro.setColumnStretch(2, 1)
         v.addLayout(ro)
-        outer.addWidget(f)
+        row2.addWidget(f, 1)
 
         f, v = self._dlg_card("Image size")
         g = QGridLayout()
@@ -954,7 +956,20 @@ class MainWindow(QMainWindow):
                               tip="Scs 2796×2048, Icon 2048×2048, 100%"), 0, 4)
         g.setColumnStretch(5, 1)
         v.addLayout(g)
+        row2.addWidget(f, 1)
+
+        f, v = self._dlg_card("How rendering works")
+        rules = QLabel(
+            "•  Every root object (top-level empty / mesh) in Scs_N / Icon_N becomes one image; its children are shown with it.\n"
+            "•  The Setup collection is always visible.\n"
+            "•  Map is rendered as its own image (one per Event_ with scs_event_active) and is hidden in object images.\n"
+            "•  Objects with scs_render_separate = True are rendered last, at the scene's original frame.\n"
+            "•  Order: Scs first, then Icon, each by number. Images are saved as PNG in the output folder.")
+        rules.setObjectName("sub")
+        rules.setWordWrap(True)
+        v.addWidget(rules)
         outer.addWidget(f)
+        outer.addStretch(1)
 
         return page
 
@@ -974,7 +989,7 @@ class MainWindow(QMainWindow):
         hh.addWidget(logo)
         tc = QVBoxLayout()
         tc.setSpacing(0)
-        t = QLabel("SCS Batch Render")
+        t = QLabel("Render Batch")
         t.setObjectName("h1")
         tc.addWidget(t)
         ver = QLabel(f"Version {APP_VERSION}")
@@ -983,6 +998,10 @@ class MainWindow(QMainWindow):
         hh.addLayout(tc)
         hh.addStretch(1)
         outer.addWidget(f)
+
+        row2 = QHBoxLayout()
+        row2.setSpacing(14)
+        outer.addLayout(row2)
 
         f, v = self._dlg_card("About")
         g = QGridLayout()
@@ -1010,7 +1029,7 @@ class MainWindow(QMainWindow):
         link.setOpenExternalLinks(True)
         g.addWidget(link, 2, 1)
         v.addLayout(g)
-        outer.addWidget(f)
+        row2.addWidget(f, 1)
 
         f, v = self._dlg_card("Update")
         self.lbl_update_status = QLabel(f"You are on v{APP_VERSION}. Not checked yet.")
@@ -1029,12 +1048,29 @@ class MainWindow(QMainWindow):
         v.addLayout(row)
         self.chk_auto_update = QCheckBox("Check for updates when the app starts")
         v.addWidget(self.chk_auto_update)
+        row2.addWidget(f, 1)
+
+        f, v = self._dlg_card("What's new in this version")
+        self.lbl_whats_new = QLabel(self._read_release_notes())
+        self.lbl_whats_new.setWordWrap(True)
+        self.lbl_whats_new.setTextFormat(Qt.MarkdownText)
+        v.addWidget(self.lbl_whats_new)
         outer.addWidget(f)
+        outer.addStretch(1)
 
         foot = QLabel(f"© {time.strftime('%Y')} {APP_AUTHOR}. All rights reserved.")
         foot.setObjectName("sub")
         outer.addWidget(foot)
         return page
+
+    @staticmethod
+    def _read_release_notes():
+        try:
+            with open(os.path.join(APP_DIR, "release_notes.md"), "r", encoding="utf-8") as f:
+                lines = [l for l in f.read().strip().splitlines() if not l.startswith("**Render Batch v")]
+            return "\n".join(lines).strip() or "No release notes."
+        except Exception:
+            return 'No release notes.'
 
     # ------------------------------------------------------------------ page switching
     PAGES = {"dash": 0, "settings": 1, "info": 2}

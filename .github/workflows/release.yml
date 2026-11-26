@@ -37,7 +37,7 @@ jobs:
         if: steps.ver.outputs.exists == 'false'
         run: |
           git archive --format=zip --prefix=Render-Batch/ \
-            -o "SCS_Batch_Render_${{ steps.ver.outputs.tag }}.zip" HEAD
+            -o "Render_Batch_${{ steps.ver.outputs.tag }}.zip" HEAD
 
       - name: Tao Release
         if: steps.ver.outputs.exists == 'false'
@@ -50,9 +50,9 @@ jobs:
           else
             NOTES_ARGS=(--generate-notes)
           fi
-          gh release create "$TAG" "SCS_Batch_Render_${TAG}.zip" \
+          gh release create "$TAG" "Render_Batch_${TAG}.zip" \
             --target "$GITHUB_SHA" \
-            --title "SCS Batch Render $TAG" \
+            --title "Render Batch $TAG" \
             "${NOTES_ARGS[@]}"
 
       - name: Bo qua (tag da ton tai)

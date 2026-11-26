@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-SCS Batch Render - Core (chay BEN TRONG Blender, che do background)
+Render Batch - Core (chay BEN TRONG Blender, che do background)
 ====================================================================
-File nay duoc app "SCS Batch Render" goi tu dong. Cung co the chay tay:
+File nay duoc app "Render Batch" goi tu dong. Cung co the chay tay:
 
     blender --background "D:/scene.blend" --python scs_render_core.py --python-exit-code 1 -- --output "D:/renders"
 
@@ -80,7 +80,7 @@ def parse_args():
     argv = sys.argv
     argv = argv[argv.index("--") + 1:] if "--" in argv else []
 
-    p = argparse.ArgumentParser(description="SCS Batch Render Core")
+    p = argparse.ArgumentParser(description="Render Batch Core")
     p.add_argument("--output", "-o", default=None)
     p.add_argument("--start-frame", type=int, default=DEFAULT_START_FRAME)
     p.add_argument("--only", default=None)
